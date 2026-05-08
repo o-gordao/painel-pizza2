@@ -368,7 +368,15 @@ function stPill(s){
   return m[s] || ('<span class="p pgr">'+s+'</span>');
 }
 function canalPill(c){
-  return {ifood:'<span class="p pr">iFood</span>',catalog:'<span class="p pb">Catálogo</span>',whatsapp_extension:'<span class="p pg">WhatsApp</span>'}[c] || ('<span class="p pgr">'+(c||'—')+'</span>');
+  var m={
+    ifood:'<span class="p pr">iFood</span>',
+    catalog:'<span class="p pb">Catálogo</span>',
+    whatsapp_extension:'<span class="p pg">WhatsApp</span>',
+    portal:'<span class="p pp">Portal</span>',
+    web:'<span class="p pb">Web</span>',
+    app:'<span class="p pb">App</span>'
+  };
+  return m[c] || ('<span class="p pgr">'+(c||'—')+'</span>');
 }
 function pgtoPill(p){
   return {online:'<span class="p pb">online</span>',card:'<span class="p py">cartão</span>',money:'<span class="p pg">dinheiro</span>',pix:'<span class="p pp">pix</span>'}[p] || ('<span class="p pgr">'+p+'</span>');
@@ -496,7 +504,7 @@ function processar(foodyArr, cwArr, data){
       status:p.status, isCancelled:isCancelled,
       dFee:+p.deliveryFee||0, pgto:PGTO_MAP[p.paymentMethod]||'online',
       cFee:+p.courierFee||0, tot:+p.orderTotal||0,
-      courier:(p.courier&&p.courier.courierName)||'Desconhecido',
+      courier:(p.courier&&p.courier.courierName)||(p.status==='open'||p.status==='accepted'?'Aguardando':'Desconhecido'),
       client:(p.customer&&p.customer.customerName)||'—',
       item:p.orderDetails?p.orderDetails.split('\n')[0]:'—',
       canal:canal, cwId:cwId,
@@ -504,6 +512,10 @@ function processar(foodyArr, cwArr, data){
     });
   });
   novos.sort(function(a,b){return a.idNum-b.idNum;});
+  // reaplicar detalhes já em cache (evita perder dados ao atualizar)
+  novos.forEach(function(p){
+    if(p.cwId && cwDetalhes[p.cwId]) aplicarDetalhes(p, cwDetalhes[p.cwId]);
+  });
   PD=novos;
   var confMap={};
   CS.forEach(function(p){if(p.conf) confMap[p.id]=true;});
