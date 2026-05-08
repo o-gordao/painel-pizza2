@@ -541,12 +541,15 @@ function aplicarDetalhes(p, det){
   }
   var isEntregaIfood=det.delivered_by&&det.delivered_by!=='foody_delivery';
   var isPgtoOnline=(det.payments||[]).some(function(pg){return pg.payment_type==='online';});
-  var comissao=(isIfoodCh&&!p.isCancelled)?p.tot*(isEntregaIfood?COMISSAO_IFOOD:COMISSAO_PROPRIA):0;
-  var taxaPgto=(isIfoodCh&&!p.isCancelled&&isPgtoOnline)?p.tot*TAXA_PGTO_ONLINE:0;
+  // base da comissão = total + descIfood (valor bruto que iFood considera)
+  var baseComissao = p.tot + descIfood;
+  var comissao=(isIfoodCh&&!p.isCancelled)?baseComissao*(isEntregaIfood?COMISSAO_IFOOD:COMISSAO_PROPRIA):0;
+  var taxaPgto=(isIfoodCh&&!p.isCancelled&&isPgtoOnline)?baseComissao*TAXA_PGTO_ONLINE:0;
   p.deliveredBy = p.isCancelled ? null : (det.delivered_by||'foody_delivery');
   p.descIfood=descIfood; p.descLoja=descLoja;
   p.comissao=comissao; p.taxaPgto=taxaPgto;
-  p.repasse = p.isCancelled ? null : (isIfoodCh ? p.tot+descIfood-descLoja-comissao-taxaPgto : null);
+  // repasse = base - comissao - taxaPgto (descLoja já está no total, só é informativo)
+  p.repasse = p.isCancelled ? null : (isIfoodCh ? baseComissao-comissao-taxaPgto : null);
   if(!p.isCancelled && det.updated_at) p.horaEntrega=det.updated_at.substring(11,16);
 }
 
