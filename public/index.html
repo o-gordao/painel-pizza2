@@ -524,7 +524,8 @@ function processar(foodyArr, cwArr, data){
   CS=PD.filter(function(p){
     return p.pgto!=='online' && !p.isCancelled;
   }).map(function(p){
-    return Object.assign({},p,{conf:!!confMap[p.id]||(p.pgto==='pix'),pgtoE:null});
+    var trocoAnterior = CS.filter(function(x){return x.id===p.id;})[0];
+    return Object.assign({},p,{conf:!!confMap[p.id]||(p.pgto==='pix'),pgtoE:null,troco:trocoAnterior?trocoAnterior.troco:0});
   });
   render();
 }
@@ -734,7 +735,7 @@ function buildC(){
       +'<td style="font-size:12px">'+p.courier+'</td>'
       +'<td><div style="display:flex;align-items:center;gap:5px"><span class="ppill '+PPC(pg)+'" id="pp'+i+'">'+PL(pg)+'</span>'
       +'<button class="ep" onclick="eP('+i+')">✏</button></div></td>'
-      +'<td class="mn" style="font-weight:600">'+R(p.tot)+'</td>'
+      +'<td class="mn" style="font-weight:600">'+R(p.tot)+(pg==='money'?' <span style="font-size:10px;color:var(--muted)">troco:</span> <input type="number" step="0.01" min="0" value="'+(p.troco||0)+'" style="width:70px;background:var(--bg3);border:1px solid var(--border2);color:var(--yellow);padding:2px 5px;border-radius:4px;font-size:11px;font-family:'DM Mono',monospace" onchange="setTroco('+i+',this.value)" onclick="event.stopPropagation()">':'')+'</td>'
       +'<td>'+stPill(p.status)+'</td>'
       +'<td style="text-align:center"><input type="checkbox" class="chk" '+(p.conf?'checked':'')+' onchange="tC('+i+',this)"></td></tr>';
   }).join('');
@@ -756,6 +757,9 @@ function filtC(t,btn){
     var pg=CS[i].pgtoE||CS[i].pgto,r=document.getElementById('cr'+i);
     if(r) r.classList.toggle('hid',CF.length>0&&CF.indexOf(pg)===-1);
   });upC();
+}
+function setTroco(i, val) {
+  CS[i].troco = parseFloat(val) || 0;
 }
 function upC(){
   var vis=CS.filter(function(p,i){var pg=CS[i].pgtoE||CS[i].pgto;return CF.length===0||CF.indexOf(pg)!==-1;});
@@ -779,7 +783,9 @@ function openM(){
     return '<div class="pi"><div class="pi-line"><span class="pi-lbl">Pedido:</span><span class="pi-val">#'+p.id+'</span></div>'
       +'<div class="pi-line"><span class="pi-lbl">Entregador:</span><span class="pi-val">'+p.courier+'</span></div>'
       +'<div class="pi-line"><span class="pi-lbl">Pagamento:</span><span class="pi-val">'+PL(p.pgtoE||p.pgto)+'</span></div>'
-      +'<div class="pi-line"><span class="pi-lbl">Valor:</span><span class="pi-val red">'+R(p.tot)+'</span></div></div>';
+      +'<div class="pi-line"><span class="pi-lbl">Valor:</span><span class="pi-val red">'+R(p.tot)+'</span></div>'
+      +(p.pgto==='money'&&p.troco>0?'<div class="pi-line"><span class="pi-lbl">Troco:</span><span class="pi-val" style="color:var(--yellow)">'+R(p.troco)+'</span></div>':'')
+      +'</div>';
   }).join('');
   var perC={};
   pend.forEach(function(p){var c=p.courier;if(!perC[c])perC[c]={n:0,v:0};perC[c].n++;perC[c].v+=p.tot;});
@@ -797,7 +803,8 @@ function copyM(){
   pend.forEach(function(p){var c=p.courier;if(!perC[c])perC[c]={n:0,v:0};perC[c].n++;perC[c].v+=p.tot;});
   var txt='⚠️ RELATÓRIO DE PENDÊNCIAS\nTotal de Pedidos Pendentes: '+pend.length+'\n\n';
   pend.forEach(function(p){
-    txt+='Pedido: '+p.id+'\nEntregador: '+p.courier+'\nPagamento: '+PL(p.pgtoE||p.pgto)+'\nValor: '+R(p.tot)+'\n\n';
+    var trocoTxt = (p.pgto==='money'&&p.troco>0) ? '\nTroco: '+R(p.troco) : '';
+    txt+='Pedido: '+p.id+'\nEntregador: '+p.courier+'\nPagamento: '+PL(p.pgtoE||p.pgto)+'\nValor: '+R(p.tot)+trocoTxt+'\n\n';
   });
   txt+='─────────────────────\nTOTAL POR ENTREGADOR\n\n';
   Object.entries(perC).forEach(function(x){
@@ -924,44 +931,6 @@ function exportCSV(){
 }
 
 // ── init ──────────────────────────────────────────────────────
-
-// ── MERCADO PAGO — notificações em tempo real ─────────────────
-var mpSource = null;
-function conectarMP() {
-  if (mpSource) mpSource.close();
-  mpSource = new EventSource('/api/mp/stream');
-  mpSource.onmessage = function(e) {
-    var dados = JSON.parse(e.data);
-    if (dados.tipo !== 'pagamento') return;
-    var valor = parseFloat(dados.valor);
-    var horaMP = new Date(dados.criadoEm);
-    horaMP.setHours(horaMP.getHours() - 3);
-    var encontrado = false;
-    CS.forEach(function(p, i) {
-      if (p.conf || Math.abs(p.tot - valor) > 0.02) return;
-      var horaPedido = p.horaEntrega || p.hora || '';
-      if (horaPedido && horaPedido !== '--:--') {
-        var hoje2 = new Date(); hoje2.setHours(hoje2.getHours() - 3);
-        var dtP = new Date(hoje2.toISOString().slice(0,10) + 'T' + horaPedido + ':00-03:00');
-        if (Math.abs(horaMP - dtP) / 60000 > 15) return;
-      }
-      p.conf = true; encontrado = true;
-      var el = document.getElementById('cr' + i);
-      if (el) { el.classList.add('okr'); var chk = el.querySelector('.chk'); if (chk) chk.checked = true; }
-    });
-    upC();
-    var ml = {credit_card:'Cartão',debit_card:'Débito',pix:'PIX',account_money:'Saldo MP'}[dados.metodo] || dados.metodo;
-    var msg = encontrado ? '✅ Pagamento confirmado · ' + ml + ' · R$ ' + valor.toFixed(2).replace('.',',') : '💳 Pagamento MP recebido · R$ ' + valor.toFixed(2).replace('.',',') + ' · sem pedido correspondente';
-    var t = document.createElement('div');
-    t.style.cssText = 'position:fixed;bottom:24px;right:24px;z-index:9999;padding:14px 18px;border-radius:10px;font-size:13px;font-weight:500;max-width:380px;box-shadow:0 4px 20px rgba(0,0,0,.4);background:' + (encontrado ? 'rgba(46,204,113,.95);color:#fff' : 'rgba(241,196,15,.95);color:#000');
-    t.textContent = msg;
-    document.body.appendChild(t);
-    setTimeout(function(){t.remove();}, 5000);
-  };
-  mpSource.onerror = function() { setTimeout(conectarMP, 10000); };
-}
-conectarMP();
-// ── FIM MERCADO PAGO ──────────────────────────────────────────
 
 document.getElementById('filtro-data').value=hojeStr();
 carregar();
