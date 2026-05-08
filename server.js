@@ -7,37 +7,37 @@ const PORT    = process.env.PORT || 3000;
 const FOODY_TOKEN = process.env.FOODY_TOKEN || 'b98e63d4a1ab4076934272af225c1b2e';
 const CW_TOKEN    = process.env.CW_TOKEN    || 'bhpnfiscTLCLeA7NDA8NP1pKcV8Lo8Wxyg5pAivu';
 
-// ── banco OPCIONAL — se falhar, servidor continua funcionando ─
+// ── banco OPCIONAL ────────────────────────────────────────────
 let pool = null;
-try {
-  if (process.env.DATABASE_URL) {
-    const pg = require('pg');
-    pool = new pg.Pool({
+if (process.env.DATABASE_URL) {
+  try {
+    const { Pool } = require('pg');
+    pool = new Pool({
       connectionString: process.env.DATABASE_URL,
       ssl: { rejectUnauthorized: false },
       connectionTimeoutMillis: 5000,
+      idleTimeoutMillis: 10000,
     });
-    pool.query('SELECT 1').then(() => {
-      console.log('[DB] conectado');
-      return pool.query(`CREATE TABLE IF NOT EXISTS historico (
+    pool.query('SELECT 1')
+      .then(() => pool.query(`CREATE TABLE IF NOT EXISTS historico (
         data DATE PRIMARY KEY, foody_json TEXT, cw_json TEXT, det_json TEXT, salvo_em TIMESTAMP DEFAULT NOW()
-      )`);
-    }).then(() => console.log('[DB] tabela pronta')).catch(e => {
-      console.log('[DB] erro ao iniciar:', e.message);
-      pool = null;
-    });
-  } else {
-    console.log('[DB] sem DATABASE_URL — rodando sem banco');
+      )`))
+      .then(() => console.log('[DB] conectado e pronto'))
+      .catch(e => { console.log('[DB] erro:', e.message); pool = null; });
+  } catch(e) {
+    console.log('[DB] módulo pg indisponível:', e.message);
   }
-} catch(e) {
-  console.log('[DB] pg não disponível:', e.message);
-  pool = null;
 }
 
-async function dbQuery(sql, params) {
+async function dbSave(sql, params) {
+  if (!pool) return;
+  try { await pool.query(sql, params); }
+  catch(e) { console.log('[DB] erro ao salvar:', e.message); }
+}
+async function dbGet(sql, params) {
   if (!pool) return null;
   try { return await pool.query(sql, params); }
-  catch(e) { console.log('[DB] query erro:', e.message); return null; }
+  catch(e) { console.log('[DB] erro ao buscar:', e.message); return null; }
 }
 
 // ── helpers ───────────────────────────────────────────────────
@@ -46,73 +46,69 @@ function hojeNoBrasil() {
   return d.toISOString().slice(0, 10);
 }
 
-function httpGet(url, headers) {
+function httpGet(url, headers, timeoutMs) {
   return new Promise((resolve, reject) => {
-    https.get(url, { headers }, res => {
+    const req = https.get(url, { headers }, res => {
       let body = '';
       res.on('data', c => body += c);
       res.on('end', () => resolve({ status: res.statusCode, body }));
-    }).on('error', reject);
+    });
+    req.on('error', reject);
+    if (timeoutMs) req.setTimeout(timeoutMs, () => { req.destroy(); reject(new Error('timeout')); });
   });
 }
 
-function sleep(ms) { return new Promise(r => setTimeout(r, ms)); }
-
-function tryJSON(body, label) {
-  try { return JSON.parse(body); }
-  catch(e) { console.log('['+label+'] não é JSON:', body.slice(0, 80)); return null; }
+function tryJSON(body) {
+  try { return JSON.parse(body); } catch(e) { return null; }
 }
 
 // ── Foody ─────────────────────────────────────────────────────
 app.get('/api/foody', async (req, res) => {
   const hoje = req.query.date || hojeNoBrasil();
-  const url  = 'https://app.foodydelivery.com/rest/1.2/orders?startDate='+hoje+'T00:00:00-03:00&endDate='+hoje+'T23:59:59-03:00';
-  try {
-    const r = await httpGet(url, { Authorization: FOODY_TOKEN, 'Content-Type': 'application/json' });
-    console.log('[FOODY]', r.status, hoje, r.body.length, 'bytes');
-    if (r.status === 200 && hoje === hojeNoBrasil()) {
-      dbQuery('INSERT INTO historico (data,foody_json) VALUES ($1,$2) ON CONFLICT (data) DO UPDATE SET foody_json=$2,salvo_em=NOW()', [hoje, r.body]);
+  // data passada: tenta banco primeiro
+  if (hoje !== hojeNoBrasil()) {
+    const r = await dbGet('SELECT foody_json FROM historico WHERE data=$1', [hoje]);
+    if (r?.rows[0]?.foody_json) {
+      console.log('[FOODY] do banco:', hoje);
+      res.setHeader('Content-Type', 'application/json');
+      return res.send(r.rows[0].foody_json);
     }
-    res.setHeader('Content-Type', 'application/json');
-    res.send(r.body);
+  }
+  const url = 'https://app.foodydelivery.com/rest/1.2/orders?startDate='+hoje+'T00:00:00-03:00&endDate='+hoje+'T23:59:59-03:00';
+  try {
+    const r = await httpGet(url, { Authorization: FOODY_TOKEN, 'Content-Type': 'application/json' }, 15000);
+    console.log('[FOODY]', r.status, hoje, r.body.length+'b');
+    if (r.status === 200) dbSave('INSERT INTO historico (data,foody_json) VALUES ($1,$2) ON CONFLICT (data) DO UPDATE SET foody_json=$2,salvo_em=NOW()', [hoje, r.body]);
+    res.setHeader('Content-Type', 'application/json'); res.send(r.body);
   } catch(e) {
     console.log('[FOODY] erro:', e.message);
     res.status(500).json({ erro: e.message });
   }
 });
 
-// ── Cardápio Web ──────────────────────────────────────────────
+// ── Cardápio Web ── sem retry longo, falha rápido ─────────────
 app.get('/api/cardapio', async (req, res) => {
   const hoje = req.query.date || hojeNoBrasil();
-
-  // se for data passada, tenta banco primeiro
+  // data passada: banco primeiro
   if (hoje !== hojeNoBrasil()) {
-    const cached = await dbQuery('SELECT cw_json FROM historico WHERE data=$1', [hoje]);
-    if (cached?.rows[0]?.cw_json) {
+    const r = await dbGet('SELECT cw_json FROM historico WHERE data=$1', [hoje]);
+    if (r?.rows[0]?.cw_json) {
       console.log('[CW] do banco:', hoje);
       res.setHeader('Content-Type', 'application/json');
-      return res.send(cached.rows[0].cw_json);
+      return res.send(r.rows[0].cw_json);
     }
   }
-
   const url = 'https://integracao.cardapioweb.com/api/partner/v1/orders/history?start_date='+hoje+'T00:00:00-03:00&end_date='+hoje+'T23:59:59-03:00';
   try {
-    // tenta até 3x com espera de 65s se der rate limit
-    let result = null;
-    for (let t = 1; t <= 3; t++) {
-      const r = await httpGet(url, { 'X-API-KEY': CW_TOKEN, Accept: 'application/json' });
-      const data = tryJSON(r.body, 'CW');
-      if (data) { result = { status: r.status, body: r.body }; break; }
-      console.log('[CW] rate limit tentativa', t, '— aguardando 65s');
-      if (t < 3) await sleep(65000);
+    const r = await httpGet(url, { 'X-API-KEY': CW_TOKEN, Accept: 'application/json' }, 15000);
+    const data = tryJSON(r.body);
+    if (!data) {
+      console.log('[CW] rate limit ou erro:', r.body.slice(0, 60));
+      return res.status(429).json({ erro: 'rate_limit', msg: 'Cardápio Web temporariamente indisponível' });
     }
-    if (!result) return res.status(429).json({ erro: 'Rate limit — tente em 1 minuto' });
-    console.log('[CW]', result.status, hoje, result.body.length, 'bytes');
-    if (result.status === 200 && hoje === hojeNoBrasil()) {
-      dbQuery('INSERT INTO historico (data,cw_json) VALUES ($1,$2) ON CONFLICT (data) DO UPDATE SET cw_json=$2,salvo_em=NOW()', [hoje, result.body]);
-    }
-    res.setHeader('Content-Type', 'application/json');
-    res.send(result.body);
+    console.log('[CW]', r.status, hoje, r.body.length+'b');
+    if (r.status === 200) dbSave('INSERT INTO historico (data,cw_json) VALUES ($1,$2) ON CONFLICT (data) DO UPDATE SET cw_json=$2,salvo_em=NOW()', [hoje, r.body]);
+    res.setHeader('Content-Type', 'application/json'); res.send(r.body);
   } catch(e) {
     console.log('[CW] erro:', e.message);
     res.status(500).json({ erro: e.message });
@@ -123,49 +119,47 @@ app.get('/api/cardapio', async (req, res) => {
 app.get('/api/cardapio/detalhes', async (req, res) => {
   const ids = (req.query.ids || '').split(',').filter(Boolean);
   if (!ids.length) return res.json({ ok: true, pedidos: [] });
-
   const pedidos = [];
   for (let i = 0; i < ids.length; i += 4) {
     const lote = ids.slice(i, i + 4);
-    const resultados = await Promise.all(lote.map(async id => {
+    const results = await Promise.all(lote.map(async id => {
       try {
-        const r = await httpGet('https://integracao.cardapioweb.com/api/partner/v1/orders/'+id, { 'X-API-KEY': CW_TOKEN, Accept: 'application/json' });
-        return tryJSON(r.body, 'CW-DET');
+        const r = await httpGet('https://integracao.cardapioweb.com/api/partner/v1/orders/'+id, { 'X-API-KEY': CW_TOKEN, Accept: 'application/json' }, 10000);
+        return tryJSON(r.body);
       } catch(e) { return null; }
     }));
-    pedidos.push(...resultados.filter(Boolean));
-    if (i + 4 < ids.length) await sleep(65000);
+    pedidos.push(...results.filter(Boolean));
+    if (i + 4 < ids.length) await new Promise(r => setTimeout(r, 65000));
   }
-
+  // salvar detalhes no banco
   const hoje = hojeNoBrasil();
   if (pedidos.length) {
-    const existing = await dbQuery('SELECT det_json FROM historico WHERE data=$1', [hoje]);
-    const detAtual = existing?.rows[0]?.det_json ? JSON.parse(existing.rows[0].det_json) : {};
-    pedidos.forEach(p => { detAtual[p.id] = p; });
-    dbQuery('INSERT INTO historico (data,det_json) VALUES ($1,$2) ON CONFLICT (data) DO UPDATE SET det_json=$2', [hoje, JSON.stringify(detAtual)]);
+    const ex = await dbGet('SELECT det_json FROM historico WHERE data=$1', [hoje]);
+    const det = ex?.rows[0]?.det_json ? JSON.parse(ex.rows[0].det_json) : {};
+    pedidos.forEach(p => { det[p.id] = p; });
+    dbSave('INSERT INTO historico (data,det_json) VALUES ($1,$2) ON CONFLICT (data) DO UPDATE SET det_json=$2', [hoje, JSON.stringify(det)]);
   }
   res.json({ ok: true, pedidos });
 });
 
 // ── Histórico ─────────────────────────────────────────────────
 app.get('/api/historico', async (req, res) => {
-  const result = await dbQuery('SELECT data, salvo_em FROM historico ORDER BY data DESC LIMIT 15');
-  if (!result) return res.json({ ok: false, erro: 'Banco não disponível', dias: [] });
-  res.json({ ok: true, dias: result.rows });
+  const r = await dbGet('SELECT data, salvo_em FROM historico ORDER BY data DESC LIMIT 15');
+  res.json({ ok: !!r, dias: r?.rows || [], dbOk: !!pool });
 });
 
 app.get('/api/historico/:data', async (req, res) => {
-  const result = await dbQuery('SELECT foody_json, cw_json, det_json FROM historico WHERE data=$1', [req.params.data]);
-  if (!result?.rows.length) return res.status(404).json({ ok: false, erro: 'Não encontrado' });
-  const row = result.rows[0];
+  const r = await dbGet('SELECT foody_json, cw_json, det_json FROM historico WHERE data=$1', [req.params.data]);
+  if (!r?.rows.length) return res.status(404).json({ ok: false, erro: 'Não encontrado' });
+  const row = r.rows[0];
   res.json({
     ok: true,
-    foody: row.foody_json ? JSON.parse(row.foody_json) : [],
-    cw:    row.cw_json    ? JSON.parse(row.cw_json)    : {},
-    det:   row.det_json   ? JSON.parse(row.det_json)   : {}
+    foody: row.foody_json ? tryJSON(row.foody_json) || [] : [],
+    cw:    row.cw_json    ? tryJSON(row.cw_json)    || {} : {},
+    det:   row.det_json   ? tryJSON(row.det_json)   || {} : {}
   });
 });
 
-app.get('/health', (_, res) => res.json({ ok: true, db: !!pool }));
+app.get('/health', (_, res) => res.json({ ok: true, db: !!pool, hora: new Date().toISOString() }));
 app.use(express.static(path.join(__dirname, 'public')));
 app.listen(PORT, () => console.log('🍕 rodando na porta', PORT));
