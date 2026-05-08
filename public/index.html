@@ -298,7 +298,7 @@ function carregar(manual){
 function processar(foodyArr, cwArr, hoje){
   var novos = [];
   foodyArr.forEach(function(p){
-    if(['closed','delivered'].indexOf(p.status)===-1) return;
+    // todos os status entram na conferência
     var dt = p.date || p.creationDate || '';
     var hora = dt.length>=16 ? dt.substring(11,16) : '--:--';
     var canal = 'ifood';
@@ -323,24 +323,31 @@ function processar(foodyArr, cwArr, hoje){
   PD = novos;
   var confMap = {};
   CS.forEach(function(p){ if(p.conf) confMap[p.id]=true; });
-  CS = PD.map(function(p){ return Object.assign({},p,{conf:!!confMap[p.id],pgtoE:null}); });
+  CS = PD.map(function(p){
+    // se já foi conferido manualmente, preserva; senão auto-marca online
+    var jaConferido = !!confMap[p.id];
+    var autoMarcado = p.pgto === 'online';
+    return Object.assign({},p,{conf: jaConferido || autoMarcado, pgtoE:null});
+  });
   render();
 }
 
 function render(){
-  var TV=PD.reduce(function(a,p){return a+p.tot;},0);
-  var TF=PD.reduce(function(a,p){return a+p.cFee;},0);
-  var TFr=PD.reduce(function(a,p){return a+p.dFee;},0);
-  var TM=PD.length?TV/PD.length:0;
-  var MX=PD.length?Math.max.apply(null,PD.map(function(p){return p.tot;})):0;
+  // pedidos finalizados = para métricas e gráficos
+  var PDfin = PD.filter(function(p){ return ['closed','delivered'].indexOf(p.status)!==-1; });
+  var TV=PDfin.reduce(function(a,p){return a+p.tot;},0);
+  var TF=PDfin.reduce(function(a,p){return a+p.cFee;},0);
+  var TFr=PDfin.reduce(function(a,p){return a+p.dFee;},0);
+  var TM=PDfin.length?TV/PDfin.length:0;
+  var MX=PDfin.length?Math.max.apply(null,PDfin.map(function(p){return p.tot;})):0;
   var LQ=TV-TF;
 
   var mets=[
-    {l:'total pedidos',v:PD.length,s:'finalizados hoje',a:false},
-    {l:'faturamento bruto',v:R(TV),s:'todos os pedidos',a:true},
+    {l:'total pedidos dia',v:PD.length,s:'todos os status',a:false},
+    {l:'faturamento bruto',v:R(TV),s:'pedidos finalizados',a:true},
     {l:'taxas entregadores',v:R(TF),s:'custo operacional',a:false},
     {l:'resultado líquido',v:R(LQ),s:'bruto - taxas',a:true},
-    {l:'ticket médio',v:R(TM),s:'por pedido',a:false},
+    {l:'ticket médio',v:R(TM),s:'pedidos finalizados',a:false},
     {l:'maior pedido',v:R(MX),s:'valor unitário',a:false},
   ];
   document.getElementById('mbox').innerHTML=mets.map(function(m){
@@ -348,7 +355,7 @@ function render(){
   }).join('');
 
   var CR={};
-  PD.forEach(function(p){
+  PDfin.forEach(function(p){
     if(!CR[p.courier]) CR[p.courier]={n:0,f:0,v:0};
     CR[p.courier].n++; CR[p.courier].f+=p.cFee; CR[p.courier].v+=p.tot;
   });
@@ -369,7 +376,7 @@ function render(){
   function cp(c){ return {ifood:'<span class="p pr">iFood</span>',catalog:'<span class="p pb">Catálogo</span>',whatsapp_extension:'<span class="p pg">WhatsApp</span>'}[c]||('<span class="p pgr">'+c+'</span>'); }
   function pp(p){ return {online:'<span class="p pb">online</span>',card:'<span class="p py">cartão</span>',money:'<span class="p pg">dinheiro</span>'}[p]||('<span class="p pgr">'+p+'</span>'); }
 
-  document.getElementById('tot-lbl').textContent=PD.length+' pedidos finalizados';
+  document.getElementById('tot-lbl').textContent=PD.length+' pedidos no dia ('+PDfin.length+' finalizados)';
   document.getElementById('otb').innerHTML=PD.map(function(p){
     return '<tr><td class="mn" style="color:var(--muted)">#'+p.id+'</td><td>'+p.client+'</td>'
       +'<td style="color:var(--muted);max-width:170px;white-space:nowrap;overflow:hidden;text-overflow:ellipsis">'+p.item+'</td>'
@@ -385,7 +392,7 @@ function render(){
   charts.c1=new Chart(document.getElementById('c1'),{type:'bar',data:{labels:gN,datasets:[{data:CL.map(function(x){return +x[1].v.toFixed(2);}),backgroundColor:CL.map(function(_,i){return COLS[i%COLS.length];}),borderRadius:4,borderWidth:0}]},options:gO(function(v){return 'R$'+v;})});
   charts.c2=new Chart(document.getElementById('c2'),{type:'bar',data:{labels:gN,datasets:[{data:CL.map(function(x){return +x[1].f.toFixed(2);}),backgroundColor:'#e8452c',borderRadius:4,borderWidth:0}]},options:gO(function(v){return 'R$'+v;})});
   var PC={online:0,card:0,money:0};
-  PD.forEach(function(p){if(PC[p.pgto]!==undefined)PC[p.pgto]++;});
+  PDfin.forEach(function(p){if(PC[p.pgto]!==undefined)PC[p.pgto]++;});
   charts.c3=new Chart(document.getElementById('c3'),{type:'doughnut',data:{labels:['Online','Cartão','Dinheiro'],datasets:[{data:[PC.online,PC.card,PC.money],backgroundColor:['#3498db','#f1c40f','#2ecc71'],borderWidth:0}]},options:{responsive:true,maintainAspectRatio:false,plugins:{legend:{position:'bottom',labels:{color:'#888',font:{size:11},boxWidth:10,padding:8}}}}});
   charts.c4=new Chart(document.getElementById('c4'),{type:'bar',data:{labels:gN,datasets:[{data:CL.map(function(x){return x[1].n;}),backgroundColor:CL.map(function(_,i){return COLS[i%COLS.length];}),borderRadius:4,borderWidth:0}]},options:gO()});
 
