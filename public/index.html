@@ -508,7 +508,9 @@ function processar(foodyArr, cwArr, data){
       client:(p.customer&&p.customer.customerName)||'—',
       item:p.orderDetails?p.orderDetails.split('\n')[0]:'—',
       canal:canal, cwId:cwId,
-      deliveredBy:null, descIfood:0, descLoja:0, comissao:0, taxaPgto:0, repasse:null
+      // catálogo/portal/whatsapp = sempre entrega própria; ifood = depende do CW
+      deliveredBy: canal!=='ifood' ? 'foody_delivery' : null,
+      descIfood:0, descLoja:0, comissao:0, taxaPgto:0, repasse:null
     });
   });
   novos.sort(function(a,b){return a.idNum-b.idNum;});
@@ -541,11 +543,11 @@ function aplicarDetalhes(p, det){
   var isPgtoOnline=(det.payments||[]).some(function(pg){return pg.payment_type==='online';});
   var comissao=(isIfoodCh&&!p.isCancelled)?p.tot*(isEntregaIfood?COMISSAO_IFOOD:COMISSAO_PROPRIA):0;
   var taxaPgto=(isIfoodCh&&!p.isCancelled&&isPgtoOnline)?p.tot*TAXA_PGTO_ONLINE:0;
-  p.deliveredBy=det.delivered_by||'foody_delivery';
+  p.deliveredBy = p.isCancelled ? null : (det.delivered_by||'foody_delivery');
   p.descIfood=descIfood; p.descLoja=descLoja;
   p.comissao=comissao; p.taxaPgto=taxaPgto;
-  p.repasse=(isIfoodCh&&!p.isCancelled)?p.tot+descIfood-descLoja-comissao-taxaPgto:0;
-  if(det.updated_at) p.horaEntrega=det.updated_at.substring(11,16);
+  p.repasse = p.isCancelled ? null : (isIfoodCh ? p.tot+descIfood-descLoja-comissao-taxaPgto : null);
+  if(!p.isCancelled && det.updated_at) p.horaEntrega=det.updated_at.substring(11,16);
 }
 
 // ── buscar detalhes CW em background ─────────────────────────
