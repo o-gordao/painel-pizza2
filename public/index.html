@@ -604,10 +604,22 @@ function carregar(manual){
   ]).then(function(results){
     var fRes=results[0], cRes=results[1];
     var foodyArr=Array.isArray(fRes)?fRes:[];
-    // cardápio web pode retornar rate limit
+    // cardápio web pode retornar rate limit (429)
     var cwArr=[];
-    if(cRes && cRes.erro) {
-      document.getElementById('tb-status').textContent='⚠ Cardápio Web: '+cRes.erro;
+    if(cRes && cRes.erro==='rate_limit') {
+      console.log('[CW] rate limit — tentando novamente em 70s');
+      setTimeout(function(){ 
+        fetch('/api/cardapio?date='+hoje).then(function(r){return r.json();}).then(function(r2){
+          if(!r2.erro) {
+            cwArr=Array.isArray(r2.orders)?r2.orders:Array.isArray(r2)?r2:[];
+            processar(foodyArr, cwArr, hoje);
+            buscarDetalhes(cwArr);
+          }
+        }).catch(function(){});
+      }, 70000);
+      document.getElementById('tb-status').textContent='✓ Foody: '+foodyArr.length+' ped. · CW: rate limit, retry em 70s...';
+    } else if(cRes && cRes.erro) {
+      document.getElementById('tb-status').textContent='⚠ CW erro: '+cRes.erro;
     } else {
       cwArr=Array.isArray(cRes&&cRes.orders)?cRes.orders:Array.isArray(cRes)?cRes:[];
     }
