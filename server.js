@@ -148,36 +148,78 @@ app.use(express.json());
 app.post('/webhook/mp', async (req, res) => {
   res.sendStatus(200); // responde imediatamente ao MP
   const body = req.body;
-  console.log('[MP WEBHOOK]', JSON.stringify(body).slice(0, 200));
-
-  // MP envia type=payment quando um pagamento é aprovado
-  if (body.type !== 'payment' || !body.data?.id) return;
+  console.log('[MP WEBHOOK] type:', body.type, JSON.stringify(body).slice(0, 300));
 
   try {
-    // buscar detalhes do pagamento na API do MP
-    const r = await httpGet(
-      'https://api.mercadopago.com/v1/payments/' + body.data.id,
-      { Authorization: 'Bearer ' + MP_TOKEN, 'Content-Type': 'application/json' },
-      10000
-    );
-    const pg = tryJSON(r.body);
-    if (!pg || pg.status !== 'approved') return;
+    // ── Maquininha Point: IPN direto (sem type, tem payment.state) ─
+    if (body.payment && body.amount && body.caller_id) {
+      const state = body.payment.state || '';
+      if (!['approved','accredited'].includes(state)) {
+        console.log('[MP POINT IPN] ignorado, state:', state);
+        return;
+      }
+      const valor    = parseFloat(body.amount) / 100; // em centavos
+      const metodo   = body.payment.payment_method_id || 'credit_card';
+      const criadoEm = body.created_at || new Date().toISOString();
+      const pgId     = String(body.payment.id || body.id);
 
-    const valor    = parseFloat(pg.transaction_amount);
-    const metodo   = pg.payment_type_id; // credit_card, debit_card, pix, etc
-    const criadoEm = pg.date_approved || pg.date_created;
-    const descricao = pg.description || '';
+      console.log('[MP POINT IPN] pagamento R$', valor, metodo, pgId);
 
-    console.log('[MP] pagamento aprovado R$', valor, metodo, criadoEm);
+      await dbSave(
+        'INSERT INTO pagamentos_mp (id, valor, status, metodo, criado_em, descricao, raw_json) VALUES ($1,$2,$3,$4,$5,$6,$7) ON CONFLICT (id) DO NOTHING',
+        [pgId, valor, state, metodo, criadoEm, body.additional_info?.external_reference||'', JSON.stringify(body)]
+      );
+      broadcastPagamento({ id: pgId, valor, metodo, criadoEm });
+      return;
+    }
 
-    // salvar no banco
-    await dbSave(
-      'INSERT INTO pagamentos_mp (id, valor, status, metodo, criado_em, descricao, raw_json) VALUES ($1,$2,$3,$4,$5,$6,$7) ON CONFLICT (id) DO NOTHING',
-      [pg.id, valor, pg.status, metodo, criadoEm, descricao, r.body]
-    );
+    // ── Maquininha Point: type=order ──────────────────────────
+    if (body.type === 'order' && body.data) {
+      const order = body.data;
+      if (!['processed','approved'].includes(order.status)) return;
+      const payments = order.transactions?.payments || [];
+      for (const pg of payments) {
+        if (!['processed','approved','accredited'].includes(pg.status)) continue;
+        const valor    = parseFloat(pg.amount) / 100;
+        const metodo   = pg.payment_method?.type || 'credit_card';
+        const criadoEm = body.date_created || new Date().toISOString();
+        const pgId     = pg.id || (order.id + '_' + (pg.reference?.id||''));
+        console.log('[MP ORDER] pagamento R$', valor, metodo, pgId);
+        await dbSave(
+          'INSERT INTO pagamentos_mp (id, valor, status, metodo, criado_em, descricao, raw_json) VALUES ($1,$2,$3,$4,$5,$6,$7) ON CONFLICT (id) DO NOTHING',
+          [pgId, valor, pg.status, metodo, criadoEm, order.external_reference||'', JSON.stringify(body)]
+        );
+        broadcastPagamento({ id: pgId, valor, metodo, criadoEm });
+      }
+      return;
+    }
 
-    // notificar o painel via SSE (Server-Sent Events)
-    broadcastPagamento({ id: pg.id, valor, metodo, criadoEm, descricao });
+    // ── Pagamento online: type=payment ────────────────────────
+    if (body.type === 'payment' && body.data?.id) {
+      const r = await httpGet(
+        'https://api.mercadopago.com/v1/payments/' + body.data.id,
+        { Authorization: 'Bearer ' + MP_TOKEN, 'Content-Type': 'application/json' },
+        10000
+      );
+      const pg = tryJSON(r.body);
+      if (!pg || pg.status !== 'approved') return;
+
+      const valor    = parseFloat(pg.transaction_amount);
+      const metodo   = pg.payment_type_id;
+      const criadoEm = pg.date_approved || pg.date_created;
+
+      console.log('[MP PAYMENT] pagamento R$', valor, metodo);
+
+      await dbSave(
+        'INSERT INTO pagamentos_mp (id, valor, status, metodo, criado_em, descricao, raw_json) VALUES ($1,$2,$3,$4,$5,$6,$7) ON CONFLICT (id) DO NOTHING',
+        [pg.id, valor, pg.status, metodo, criadoEm, pg.description||'', r.body]
+      );
+
+      broadcastPagamento({ id: pg.id, valor, metodo, criadoEm });
+      return;
+    }
+
+    console.log('[MP] evento ignorado:', body.type);
 
   } catch(e) {
     console.log('[MP] erro ao processar:', e.message);
