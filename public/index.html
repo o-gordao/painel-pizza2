@@ -150,6 +150,10 @@ hr.d{border:none;border-top:1px solid var(--border);margin:5px 0}
 <div class="main">
   <div class="topbar">
     <div class="tb-info">Próxima atualização em <strong><span id="cd">60</span>s</strong> · automático a cada 60s</div>
+    <div style="display:flex;align-items:center;gap:8px;flex-wrap:wrap">
+      <input type="date" id="filtro-data" style="background:var(--bg3);border:1px solid var(--border2);color:var(--text);padding:5px 10px;border-radius:6px;font-size:12px;font-family:'DM Mono',monospace;outline:none" onchange="mudarData(this.value)">
+      <button class="btn" onclick="voltarHoje()" id="btn-hoje" style="display:none">← hoje</button>
+    </div>
     <div class="tb-info" id="tb-status">aguardando...</div>
   </div>
 
@@ -172,6 +176,7 @@ hr.d{border:none;border-top:1px solid var(--border);margin:5px 0}
     <button class="tab" onclick="T('graficos',this)">gráficos</button>
     <button class="tab" onclick="T('fechamento',this)">fechamento final</button>
     <button class="tab" onclick="T('conferencia',this)">✓ conferência</button>
+    <button class="tab" onclick="T('historico',this)">📅 histórico</button>
   </div>
 
   <div id="panel-entregadores" class="panel on"><div class="cg" id="cgrid"></div></div>
@@ -202,7 +207,7 @@ hr.d{border:none;border-top:1px solid var(--border);margin:5px 0}
   <div id="panel-fechamento" class="panel">
     <!-- iFood -->
     <div class="ifood-box">
-      <div class="ifood-box-title">📱 repasse iFood (semanal)</div>
+      <div class="ifood-box-title" id="ifood-periodo-titulo">📱 repasse iFood (semanal)</div>
       <div class="sg" style="margin-bottom:0">
         <div>
           <div class="sr"><span class="lb">total bruto pedidos iFood</span><span class="vl" id="if-bruto"></span></div>
@@ -284,11 +289,44 @@ hr.d{border:none;border-top:1px solid var(--border);margin:5px 0}
         <th style="width:80px">pedido</th><th style="width:100px">status</th>
         <th style="width:120px">horário</th><th>entregador</th>
         <th style="width:155px">pagamento</th><th style="width:90px">valor</th>
+        <th style="width:100px">status</th>
         <th style="width:45px;text-align:center">✓</th>
       </tr></thead><tbody id="ctb"></tbody></table>
     </div>
   </div>
 </div>
+
+
+  <div id="panel-historico" class="panel">
+    <div style="display:flex;align-items:center;justify-content:space-between;margin-bottom:16px;flex-wrap:wrap;gap:8px">
+      <div style="font-size:13px;font-weight:500">Últimos 15 dias</div>
+      <button class="btn" onclick="carregarHistorico()">🔄 atualizar lista</button>
+    </div>
+    <div class="tw">
+      <table>
+        <thead><tr>
+          <th>data</th><th>dia da semana</th><th>pedidos</th><th>faturamento</th><th>taxas entregadores</th><th>repasse iFood est.</th><th>salvo em</th><th></th>
+        </tr></thead>
+        <tbody id="hist-tbody">
+          <tr><td colspan="8" style="text-align:center;color:var(--muted);padding:24px">clique em atualizar para carregar</td></tr>
+        </tbody>
+      </table>
+    </div>
+    <!-- detalhe do dia histórico -->
+    <div id="hist-detalhe" style="display:none;margin-top:20px">
+      <div style="display:flex;align-items:center;gap:12px;margin-bottom:16px">
+        <button class="btn" onclick="fecharHistDetalhe()">← voltar</button>
+        <span style="font-size:14px;font-weight:600" id="hist-detalhe-titulo"></span>
+      </div>
+      <div class="metrics" id="hist-mbox"></div>
+      <div class="tw">
+        <div class="th"><span style="font-size:13px;font-weight:500" id="hist-tot-lbl"></span></div>
+        <table><thead><tr>
+          <th>pedido</th><th>cliente</th><th>entregador</th><th>canal</th><th>pgto</th><th>status</th><th>entrega</th><th>desc. loja</th><th>desc. ifood</th><th>comissão</th><th>total</th><th>repasse</th>
+        </tr></thead><tbody id="hist-otb"></tbody></table>
+      </div>
+    </div>
+  </div>
 
 <div class="modal hid" id="mpend" onclick="if(event.target===this)closeM()">
   <div class="mb">
@@ -327,7 +365,231 @@ function startCD(){
   document.getElementById('cd').textContent=cdVal;
   cdTimer=setInterval(function(){
     cdVal--; document.getElementById('cd').textContent=cdVal;
-    if(cdVal<=0){clearInterval(cdTimer);carregar(false);}
+    if(cdVal<=0){clearInterval(cdTimer);
+
+// ── FILTRO POR DATA ───────────────────────────────────────────
+function hojeStr(){
+  var d=new Date(); d.setHours(d.getHours()-3); return d.toISOString().slice(0,10);
+}
+var dataAtual = hojeStr();
+function mudarData(data){
+  if(!data) return;
+  dataAtual=data;
+  var isHoje=data===hojeStr();
+  document.getElementById('btn-hoje').style.display=isHoje?'none':'flex';
+  document.getElementById('filtro-data').value=data;
+  carregarData(data, isHoje);
+}
+function voltarHoje(){
+  mudarData(hojeStr());
+}
+function carregarData(data, isHoje){
+  var btn=document.getElementById('btn-ref');
+  btn.disabled=true; btn.innerHTML='<span class="spin"></span> buscando...';
+  document.getElementById('tb-status').innerHTML='<span class="spin"></span> carregando '+data+'...';
+  clearInterval(cdTimer);
+  if(isHoje){
+    carregar(true); return;
+  }
+  // buscar dados históricos do banco
+  fetch('/api/historico/'+data).then(function(r){return r.json();}).then(function(res){
+    if(!res.ok){ document.getElementById('tb-status').textContent='⚠ Dados não encontrados para '+data; return; }
+    var foodyArr=Array.isArray(res.foody)?res.foody:[];
+    var cwObj=res.cw||{};
+    var cwArr=Array.isArray(cwObj.orders)?cwObj.orders:Array.isArray(cwObj)?cwObj:[];
+    var detMap=res.det||{};
+    processar(foodyArr, cwArr, data);
+    // aplicar detalhes históricos
+    PD.forEach(function(p){
+      if(p.cwId && detMap[p.cwId]){
+        var det=detMap[p.cwId];
+        var descIfood=0, descLoja=0;
+        var isCancelled=['cancelled','canceled'].indexOf(p.status)!==-1;
+        var isIfoodCh=p.canal==='ifood';
+        if(!isCancelled){
+          (det.discounts||[]).forEach(function(d){
+            if(d.sponsorship==='ifood') descIfood+=d.total||0;
+            else if(d.sponsorship==='merchant') descLoja+=d.total||0;
+          });
+        }
+        var isEntregaIfood=det.delivered_by&&det.delivered_by!=='foody_delivery';
+        var isPgtoOnline=(det.payments||[]).some(function(pg){return pg.payment_type==='online';});
+        var comissao=(isIfoodCh&&!isCancelled)?p.tot*(isEntregaIfood?COMISSAO_IFOOD:COMISSAO_PROPRIA):0;
+        var taxaPgto=(isIfoodCh&&!isCancelled&&isPgtoOnline)?p.tot*TAXA_PGTO_ONLINE:0;
+        p.deliveredBy=det.delivered_by||'foody_delivery';
+        p.descIfood=descIfood; p.descLoja=descLoja;
+        p.comissao=comissao; p.taxaPgto=taxaPgto;
+        p.repasse=(isIfoodCh&&!isCancelled)?p.tot+descIfood-descLoja-comissao-taxaPgto:0;
+        // horário entrega
+        if(det.updated_at) p.horaEntrega=det.updated_at.substring(11,16);
+      }
+    });
+    render();
+    var dataFmt=data.split('-').reverse().join('/');
+    document.getElementById('logo-sub').textContent='fechamento · '+dataFmt;
+    document.getElementById('tb-status').textContent='✓ '+PD.length+' pedidos · '+dataFmt+' (histórico)';
+    document.getElementById('badge-att').textContent='📅 '+dataFmt;
+  }).catch(function(e){
+    document.getElementById('tb-status').textContent='⚠ erro: '+e.message;
+  }).finally(function(){
+    btn.disabled=false; btn.innerHTML='🔄 atualizar';
+  });
+}
+// ── FIM FILTRO POR DATA ───────────────────────────────────────
+
+// ── HISTÓRICO ─────────────────────────────────────────────────
+var COMISSAO_PROPRIA = 0.11;
+var COMISSAO_IFOOD   = 0.23;
+var TAXA_PGTO_ONLINE = 0.028;
+var pgtoMapH = {online:'online',card:'card',money:'money',pix:'pix',e_wallet:'online',on_credit:'card'};
+
+var dias_semana = ['Domingo','Segunda','Terça','Quarta','Quinta','Sexta','Sábado'];
+
+function carregarHistorico(){
+  document.getElementById('hist-tbody').innerHTML='<tr><td colspan="8" style="text-align:center;color:var(--muted);padding:20px"><span class="spin"></span> carregando...</td></tr>';
+  fetch('/api/historico').then(function(r){return r.json();}).then(function(res){
+    if(!res.ok||!res.dias.length){
+      document.getElementById('hist-tbody').innerHTML='<tr><td colspan="8" style="text-align:center;color:var(--muted);padding:20px">Nenhum dia encontrado ainda.</td></tr>';
+      return;
+    }
+    document.getElementById('hist-tbody').innerHTML=res.dias.map(function(d){
+      var dt = new Date(d.data+'T12:00:00');
+      var diaSem = dias_semana[dt.getDay()];
+      var dataFmt = d.data.split('-').reverse().join('/');
+      var salvoEm = new Date(d.salvo_em).toLocaleTimeString('pt-BR',{hour:'2-digit',minute:'2-digit'});
+      return '<tr>'
+        +'<td class="mn" style="font-weight:600">'+dataFmt+'</td>'
+        +'<td style="color:var(--muted)">'+diaSem+'</td>'
+        +'<td id="hist-ped-'+d.data+'"><span style="color:var(--muted)">—</span></td>'
+        +'<td id="hist-fat-'+d.data+'"><span style="color:var(--muted)">—</span></td>'
+        +'<td id="hist-tax-'+d.data+'"><span style="color:var(--muted)">—</span></td>'
+        +'<td id="hist-rep-'+d.data+'"><span style="color:var(--muted)">—</span></td>'
+        +'<td style="color:var(--muted);font-size:11px">'+salvoEm+'</td>'
+        +'<td><button class="btn" onclick="abrirHistDetalhe(''+d.data+'')">ver detalhes</button></td>'
+        +'</tr>';
+    }).join('');
+    // carregar resumo de cada dia
+    res.dias.forEach(function(d){ carregarResumo(d.data); });
+  }).catch(function(e){
+    document.getElementById('hist-tbody').innerHTML='<tr><td colspan="8" style="text-align:center;color:#ff6b4a;padding:20px">Erro: '+e.message+'</td></tr>';
+  });
+}
+
+function calcPedidosHist(foodyArr, cwArr, detMap){
+  var pedidos = [];
+  cwArr = cwArr || [];
+  foodyArr.forEach(function(p){
+    if(['closed','delivered'].indexOf(p.status)===-1) return;
+    // identificar canal via CW
+    var canal='catalog', cwId=null;
+    var dt=p.date||p.creationDate||'';
+    for(var i=0;i<cwArr.length;i++){
+      try{
+        var diff=Math.abs(new Date(cwArr[i].created_at)-new Date(dt))/1000;
+        if(diff<90){ canal=cwArr[i].sales_channel||'ifood'; cwId=cwArr[i].id; break; }
+      }catch(e){}
+    }
+    var det = detMap && cwId ? detMap[cwId] : null;
+    var descIfood=0, descLoja=0, deliveredBy='foody_delivery', isPgtoOnline=false;
+    var isCancelled = ['cancelled','canceled'].indexOf(p.status)!==-1;
+    var isIfoodCh = canal==='ifood'; // só canal ifood tem comissão
+    if(det && !isCancelled){
+      (det.discounts||[]).forEach(function(d){
+        if(d.sponsorship==='ifood') descIfood+=d.total||0;
+        else if(d.sponsorship==='merchant') descLoja+=d.total||0;
+      });
+      deliveredBy = det.delivered_by||'foody_delivery';
+      isPgtoOnline = (det.payments||[]).some(function(pg){return pg.payment_type==='online';});
+    }
+    var isIfoodEnt = deliveredBy && deliveredBy!=='foody_delivery';
+    var comissao = (isIfoodCh && !isCancelled) ? (+p.orderTotal||0) * (isIfoodEnt ? COMISSAO_IFOOD : COMISSAO_PROPRIA) : 0;
+    var taxaPgto = (isIfoodCh && !isCancelled && isPgtoOnline) ? (+p.orderTotal||0)*TAXA_PGTO_ONLINE : 0;
+    pedidos.push({
+      id:String(p.id), idNum:parseInt(p.id)||0,
+      status:p.status, tot:+p.orderTotal||0,
+      cFee:+p.courierFee||0, dFee:+p.deliveryFee||0,
+      pgto:pgtoMapH[p.paymentMethod]||'online',
+      courier:(p.courier&&p.courier.courierName)||'—',
+      client:(p.customer&&p.customer.customerName)||'—',
+      canal:canal, cwId:cwId,
+      deliveredBy:deliveredBy, descIfood:descIfood, descLoja:descLoja,
+      comissao:comissao, taxaPgto:taxaPgto,
+      repasse: (det&&isIfoodCh&&!isCancelled) ? (+p.orderTotal||0)+descIfood-descLoja-comissao-taxaPgto : (isIfoodCh ? null : 0)
+    });
+  });
+  pedidos.sort(function(a,b){return a.idNum-b.idNum;});
+  return pedidos;
+}
+
+function carregarResumo(data){
+  fetch('/api/historico/'+data).then(function(r){return r.json();}).then(function(res){
+    if(!res.ok) return;
+    var peds = calcPedidosHist(res.foody||[], res.det||{});
+    var TV=peds.reduce(function(a,p){return a+p.tot;},0);
+    var TF=peds.reduce(function(a,p){return a+p.cFee;},0);
+    var rep=peds.reduce(function(a,p){return p.repasse!==null?a+p.repasse:a+p.tot;},0);
+    var el; 
+    el=document.getElementById('hist-ped-'+data); if(el) el.textContent=peds.length+' ped.';
+    el=document.getElementById('hist-fat-'+data); if(el){el.textContent=R(TV);el.style.color='var(--green)';}
+    el=document.getElementById('hist-tax-'+data); if(el){el.textContent=R(TF);el.style.color='#ff6b4a';}
+    el=document.getElementById('hist-rep-'+data); if(el){el.textContent=R(rep);el.style.color='var(--blue)';}
+  }).catch(function(){});
+}
+
+function abrirHistDetalhe(data){
+  document.getElementById('hist-detalhe').style.display='none';
+  var dataFmt=data.split('-').reverse().join('/');
+  document.getElementById('hist-detalhe-titulo').textContent='Detalhes — '+dataFmt;
+  document.getElementById('hist-otb').innerHTML='<tr><td colspan="12" style="text-align:center;color:var(--muted);padding:20px"><span class="spin"></span> carregando...</td></tr>';
+  document.getElementById('hist-detalhe').style.display='block';
+  document.getElementById('hist-mbox').innerHTML='';
+
+  fetch('/api/historico/'+data).then(function(r){return r.json();}).then(function(res){
+    if(!res.ok){ document.getElementById('hist-otb').innerHTML='<tr><td colspan="12" style="text-align:center;color:#ff6b4a">Dados não encontrados</td></tr>'; return; }
+    var peds=calcPedidosHist(res.foody||[], res.det||{});
+    var TV=peds.reduce(function(a,p){return a+p.tot;},0);
+    var TF=peds.reduce(function(a,p){return a+p.cFee;},0);
+    var TM=peds.length?TV/peds.length:0;
+    var rep=peds.filter(function(p){return p.repasse!==null;}).reduce(function(a,p){return a+p.repasse;},0);
+
+    document.getElementById('hist-mbox').innerHTML=[
+      {l:'pedidos finalizados',v:peds.length,a:false},
+      {l:'faturamento bruto',v:R(TV),a:true},
+      {l:'taxas entregadores',v:R(TF),a:false},
+      {l:'ticket médio',v:R(TM),a:false},
+      {l:'repasse iFood est.',v:R(rep),a:false},
+      {l:'líquido estimado',v:R(TV-TF),a:true},
+    ].map(function(m){return '<div class="metric'+(m.a?' ma':'')+'"><div class="ml">'+m.l+'</div><div class="mv">'+m.v+'</div></div>';}).join('');
+
+    document.getElementById('hist-tot-lbl').textContent=peds.length+' pedidos finalizados em '+dataFmt;
+
+    function entPill(d){if(!d)return '<span class="p pgr">—</span>';if(d==='foody_delivery')return '<span class="p pg">Própria</span>';return '<span class="p pr">iFood</span>';}
+    function pp(p){return {online:'<span class="p pb">online</span>',card:'<span class="p py">cartão</span>',money:'<span class="p pg">dinheiro</span>',pix:'<span class="p pp">pix</span>'}[p]||('<span class="p pgr">'+p+'</span>');}
+
+    document.getElementById('hist-otb').innerHTML=peds.map(function(p){
+      var rep=p.repasse!==null?('<span style="color:var(--green)">'+R(p.repasse)+'</span>'):'<span style="color:var(--muted)">sem det.</span>';
+      return '<tr><td class="mn" style="color:var(--muted)">#'+p.id+'</td>'
+        +'<td>'+p.client+'</td><td>'+p.courier.split(' ')[0]+'</td>'
+        +'<td><span class="p pr">iFood</span></td><td>'+pp(p.pgto)+'</td>'
+        +'<td><span class="p pgr">'+p.status+'</span></td><td>'+entPill(p.deliveredBy)+'</td>'
+        +'<td class="mn" style="color:#ff6b4a">'+(p.descLoja>0?'-'+R(p.descLoja):'—')+'</td>'
+        +'<td class="mn" style="color:var(--green)">'+(p.descIfood>0?'+'+R(p.descIfood):'—')+'</td>'
+        +'<td class="mn" style="color:#ff6b4a">'+(p.comissao>0?'-'+R(p.comissao):'—')+'</td>'
+        +'<td class="mn" style="font-weight:600">'+R(p.tot)+'</td>'
+        +'<td>'+rep+'</td></tr>';
+    }).join('');
+  }).catch(function(e){
+    document.getElementById('hist-otb').innerHTML='<tr><td colspan="12" style="text-align:center;color:#ff6b4a">Erro: '+e.message+'</td></tr>';
+  });
+}
+
+function fecharHistDetalhe(){
+  document.getElementById('hist-detalhe').style.display='none';
+}
+// ── FIM HISTÓRICO ──────────────────────────────────────────────
+
+document.getElementById('filtro-data').value=hojeStr();
+carregar(false);}
   },1000);
 }
 
@@ -342,12 +604,19 @@ function carregar(manual){
   ]).then(function(results){
     var fRes=results[0], cRes=results[1];
     var foodyArr=Array.isArray(fRes)?fRes:[];
-    var cwArr=Array.isArray(cRes&&cRes.orders)?cRes.orders:Array.isArray(cRes)?cRes:[];
+    // cardápio web pode retornar rate limit
+    var cwArr=[];
+    if(cRes && cRes.erro) {
+      document.getElementById('tb-status').textContent='⚠ Cardápio Web: '+cRes.erro;
+    } else {
+      cwArr=Array.isArray(cRes&&cRes.orders)?cRes.orders:Array.isArray(cRes)?cRes:[];
+    }
     processar(foodyArr, cwArr, hoje);
     var agora=new Date().toLocaleTimeString('pt-BR',{hour:'2-digit',minute:'2-digit'});
     document.getElementById('badge-att').textContent='✓ '+agora;
     document.getElementById('logo-sub').textContent='fechamento · '+hoje.split('-').reverse().join('/');
-    document.getElementById('tb-status').textContent='✓ '+PD.length+' pedidos · '+agora;
+    var cwStatus = cwArr.length ? ' · CW: '+cwArr.length+' ped.' : ' · CW: aguardando rate limit...';
+    document.getElementById('tb-status').textContent='✓ Foody: '+foodyArr.length+' ped.'+cwStatus+' · '+agora;
     // buscar detalhes em background
     buscarDetalhes(cwArr);
   }).catch(function(e){
@@ -372,7 +641,7 @@ function processar(foodyArr, cwArr, hoje){
       }catch(e){}
     }
     novos.push({
-      id:String(p.id), idNum:parseInt(p.id)||0, hora:hora, status:p.status,
+      id:String(p.id), idNum:parseInt(p.id)||0, hora:hora, horaEntrega:null, status:p.status,
       dFee:+p.deliveryFee||0, pgto:pgtoMap[p.paymentMethod]||'online',
       cFee:+p.courierFee||0, tot:+p.orderTotal||0,
       courier:(p.courier&&p.courier.courierName)||'Desconhecido',
@@ -426,21 +695,28 @@ function buscarDetalhes(cwArr){
           PD.forEach(function(p){
             if(p.cwId==id){
               var descIfood=0, descLoja=0;
-              (det.discounts||[]).forEach(function(d){
-                if(d.sponsorship==='ifood') descIfood+=d.total||0;
-                else if(d.sponsorship==='merchant') descLoja+=d.total||0;
-              });
+              var isCancelled=['cancelled','canceled'].indexOf(p.status)!==-1;
+              var isIfoodCh = p.canal==='ifood';
+              if(!isCancelled){
+                (det.discounts||[]).forEach(function(d){
+                  if(d.sponsorship==='ifood') descIfood+=d.total||0;
+                  else if(d.sponsorship==='merchant') descLoja+=d.total||0;
+                });
+              }
               var isEntregaIfood = det.delivered_by && det.delivered_by!=='foody_delivery';
               var comissaoRate = isEntregaIfood ? COMISSAO_IFOOD : COMISSAO_PROPRIA;
               var isPgtoOnline = (det.payments||[]).some(function(pg){return pg.payment_type==='online';});
-              var taxaPgto = isPgtoOnline ? p.tot*TAXA_PGTO_ONLINE : 0;
-              var comissao = p.tot * comissaoRate;
+              var taxaPgto = (isIfoodCh&&!isCancelled&&isPgtoOnline) ? p.tot*TAXA_PGTO_ONLINE : 0;
+              var comissao = (isIfoodCh&&!isCancelled) ? p.tot*comissaoRate : 0;
               p.deliveredBy = det.delivered_by||'foody_delivery';
               p.descIfood = descIfood;
               p.descLoja  = descLoja;
               p.comissao  = comissao;
               p.taxaPgto  = taxaPgto;
-              p.repasse   = p.tot + descIfood - descLoja - comissao - taxaPgto;
+              p.repasse   = (isIfoodCh&&!isCancelled) ? p.tot+descIfood-descLoja-comissao-taxaPgto : 0;
+              // horário de entrega (updated_at quando delivered)
+              if(det.updated_at && p.status==='delivered') p.horaEntrega=det.updated_at.substring(11,16);
+              else if(det.updated_at && p.status==='closed') p.horaEntrega=det.updated_at.substring(11,16);
             }
           });
         }
@@ -551,6 +827,15 @@ function render(){
   document.getElementById('if-desc-loja').textContent='-'+R(ifDescLoja);
   document.getElementById('if-comissao').textContent='-'+R(ifComissao);
   document.getElementById('if-taxa-pgto').textContent='-'+R(ifTaxaPgto);
+  // período semanal (seg-dom) e data de pagamento (quarta seguinte)
+  var hoje2=new Date(); hoje2.setHours(hoje2.getHours()-3);
+  var diaSem=hoje2.getDay(); // 0=dom,1=seg...6=sab
+  var diasAteSeg=diaSem===0?6:diaSem-1;
+  var seg=new Date(hoje2); seg.setDate(seg.getDate()-diasAteSeg);
+  var dom=new Date(seg); dom.setDate(seg.getDate()+6);
+  var qua=new Date(dom); qua.setDate(dom.getDate()+3); // quarta após domingo
+  var fmt=function(d){return d.toLocaleDateString('pt-BR',{day:'2-digit',month:'2-digit'});};
+  document.getElementById('ifood-periodo-titulo').textContent='📱 repasse iFood · '+fmt(seg)+' a '+fmt(dom)+' · pago em '+fmt(qua);
   document.getElementById('if-repasse').textContent=R(ifRepasse);
   document.getElementById('if-n-propria').textContent=nPropria+' pedidos (11%)';
   document.getElementById('if-n-ifood').textContent=nIfoodEnt+' pedidos (23%)';
@@ -595,11 +880,12 @@ function buildC(){
     return '<tr id="cr'+i+'" class="'+(p.conf?'okr':'')+(hide?' hid':'')+'"><td class="mn" style="font-weight:600">#'+p.id+'</td>'
       +'<td><span class="p '+(p.status==='closed'?'pgr':p.status==='delivered'?'pg':'pb')+'">'
       +(p.status==='closed'?'Finalizado':p.status==='delivered'?'Entregue':p.status==='onGoing'?'Em rota':'Em aberto')+'</span></td>'
-      +'<td class="mn" style="font-size:11px;color:var(--muted)">'+p.hora+'</td>'
+      +'<td class="mn" style="font-size:11px;color:var(--muted)">'+(p.horaEntrega||p.hora||'—')+'</td>'
       +'<td style="font-size:12px">'+p.courier+'</td>'
       +'<td><div style="display:flex;align-items:center;gap:5px"><span class="ppill '+PC2(pg)+'" id="pp'+i+'">'+PL(pg)+'</span>'
       +'<button class="ep" onclick="eP('+i+')">✏</button></div></td>'
       +'<td class="mn" style="font-weight:600">'+R(p.tot)+'</td>'
+      +'<td><span class="p '+(p.status==='closed'?'pgr':p.status==='delivered'?'pg':p.status==='onGoing'?'pb':'py')+'">'+(p.status==='closed'?'Finalizado':p.status==='delivered'?'Entregue':p.status==='onGoing'?'Em rota':'Em aberto')+'</span></td>'
       +'<td style="text-align:center"><input type="checkbox" class="chk" '+(p.conf?'checked':'')+' onchange="tC('+i+',this)"></td></tr>';
   }).join('');
   upC();
