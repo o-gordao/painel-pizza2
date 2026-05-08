@@ -215,3 +215,4 @@ app.get('/api/mp/pagamentos', async (req, res) => {
 app.get('/health', (_, res) => res.json({ ok: true, db: !!pool }));
 app.use(express.static(path.join(__dirname, 'public')));
 app.listen(PORT, () => console.log('🍕 rodando na porta', PORT));
+// já completo acima
