@@ -924,6 +924,45 @@ function exportCSV(){
 }
 
 // ── init ──────────────────────────────────────────────────────
+
+// ── MERCADO PAGO — notificações em tempo real ─────────────────
+var mpSource = null;
+function conectarMP() {
+  if (mpSource) mpSource.close();
+  mpSource = new EventSource('/api/mp/stream');
+  mpSource.onmessage = function(e) {
+    var dados = JSON.parse(e.data);
+    if (dados.tipo !== 'pagamento') return;
+    var valor = parseFloat(dados.valor);
+    var horaMP = new Date(dados.criadoEm);
+    horaMP.setHours(horaMP.getHours() - 3);
+    var encontrado = false;
+    CS.forEach(function(p, i) {
+      if (p.conf || Math.abs(p.tot - valor) > 0.02) return;
+      var horaPedido = p.horaEntrega || p.hora || '';
+      if (horaPedido && horaPedido !== '--:--') {
+        var hoje2 = new Date(); hoje2.setHours(hoje2.getHours() - 3);
+        var dtP = new Date(hoje2.toISOString().slice(0,10) + 'T' + horaPedido + ':00-03:00');
+        if (Math.abs(horaMP - dtP) / 60000 > 15) return;
+      }
+      p.conf = true; encontrado = true;
+      var el = document.getElementById('cr' + i);
+      if (el) { el.classList.add('okr'); var chk = el.querySelector('.chk'); if (chk) chk.checked = true; }
+    });
+    upC();
+    var ml = {credit_card:'Cartão',debit_card:'Débito',pix:'PIX',account_money:'Saldo MP'}[dados.metodo] || dados.metodo;
+    var msg = encontrado ? '✅ Pagamento confirmado · ' + ml + ' · R$ ' + valor.toFixed(2).replace('.',',') : '💳 Pagamento MP recebido · R$ ' + valor.toFixed(2).replace('.',',') + ' · sem pedido correspondente';
+    var t = document.createElement('div');
+    t.style.cssText = 'position:fixed;bottom:24px;right:24px;z-index:9999;padding:14px 18px;border-radius:10px;font-size:13px;font-weight:500;max-width:380px;box-shadow:0 4px 20px rgba(0,0,0,.4);background:' + (encontrado ? 'rgba(46,204,113,.95);color:#fff' : 'rgba(241,196,15,.95);color:#000');
+    t.textContent = msg;
+    document.body.appendChild(t);
+    setTimeout(function(){t.remove();}, 5000);
+  };
+  mpSource.onerror = function() { setTimeout(conectarMP, 10000); };
+}
+conectarMP();
+// ── FIM MERCADO PAGO ──────────────────────────────────────────
+
 document.getElementById('filtro-data').value=hojeStr();
 carregar();
 </script>
