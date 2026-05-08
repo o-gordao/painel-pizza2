@@ -158,7 +158,7 @@ app.post('/webhook/mp', async (req, res) => {
         console.log('[MP POINT IPN] ignorado, state:', state);
         return;
       }
-      const valor    = parseFloat(body.amount) / 100; // em centavos
+      const valor    = parseFloat(body.amount) / 1000; // MP Point envia em milésimos (1000 = R$1,00)
       const metodo   = body.payment.payment_method_id || 'credit_card';
       const criadoEm = body.created_at || new Date().toISOString();
       const pgId     = String(body.payment.id || body.id);
@@ -180,7 +180,7 @@ app.post('/webhook/mp', async (req, res) => {
       const payments = order.transactions?.payments || [];
       for (const pg of payments) {
         if (!['processed','approved','accredited'].includes(pg.status)) continue;
-        const valor    = parseFloat(pg.amount) / 100;
+        const valor    = parseFloat(pg.amount) / 1000; // MP Point em milésimos
         const metodo   = pg.payment_method?.type || 'credit_card';
         const criadoEm = body.date_created || new Date().toISOString();
         const pgId     = pg.id || (order.id + '_' + (pg.reference?.id||''));
