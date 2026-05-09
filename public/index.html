@@ -140,6 +140,11 @@ hr.d{border:none;border-top:1px solid var(--border);margin:5px 0}
 .rota-edit-input:focus{border-color:var(--accent)}
 .notif-badge{background:var(--accent);color:#fff;border-radius:50%;width:16px;height:16px;font-size:10px;font-weight:700;display:inline-flex;align-items:center;justify-content:center}
 @media(max-width:768px){:root{--sidebar-w:56px}.logo-text,.logo-sub,.sb-status,.sb-cd,.tab-label{display:none}.tab{padding:10px 0;justify-content:center}.sb-logo{justify-content:center;padding:12px 8px}}
+
+.metric{position:relative}
+.eye-btn{position:absolute;top:10px;right:10px;background:none;border:none;cursor:pointer;color:var(--muted);font-size:13px;padding:2px;line-height:1;opacity:.5;transition:opacity .15s}
+.eye-btn:hover{opacity:1;color:var(--text)}
+.mv-hidden{filter:blur(6px);user-select:none;pointer-events:none}
 </style>
 </head>
 <body>
@@ -400,6 +405,13 @@ var COLS=['#e8452c','#3498db','#2ecc71','#f1c40f','#9b59b6','#e67e22','#1abc9c',
 var PGTO_MAP={online:'online',card:'card',money:'money',pix:'pix',e_wallet:'online',on_credit:'card'};
 var DIAS_SEM=['Domingo','Segunda','Terça','Quarta','Quinta','Sexta','Sábado'];
 var PD=[],CS=[],CF=[],charts={},cdVal=60,cdTimer=null,cwDetalhes={},modoHistorico=false;
+
+
+function toggleMetric(btn){
+  var mv=btn.parentElement.querySelector('.mv');
+  var hidden=mv.classList.toggle('mv-hidden');
+  btn.textContent=hidden?'🙈':'👁';
+}
 
 function R(v){return 'R$ '+v.toFixed(2).replace('.',',');}
 function pct(v,t){return Math.round(v/(t||1)*100);}
@@ -738,13 +750,16 @@ function render(){
   document.getElementById('ifood-periodo').textContent='📱 repasse iFood · '+fmt(seg)+' a '+fmt(dom)+' · pago em '+fmt(qua);
 
   document.getElementById('mbox').innerHTML=[
-    {l:'total pedidos dia',v:PD.length,s:'',a:false},
-    {l:'faturamento bruto',v:R(TV),s:'',a:true},
-    {l:'taxas entregadores',v:R(TF),s:'',a:false},
-    {l:'resultado líquido',v:R(LQ),s:'',a:true},
-    {l:'ticket médio',v:R(TM),s:'',a:false},
-    {l:'repasse iFood',v:R(ifRep),s:'',a:false},
-  ].map(function(m){return '<div class="metric'+(m.a?' ma':'')+'"><div class="ml">'+m.l+'</div><div class="mv">'+m.v+'</div><div class="ms">'+m.s+'</div></div>';}).join('');
+    {l:'total pedidos dia',v:PD.length,s:'',a:false,eye:false},
+    {l:'faturamento bruto',v:R(TV),s:'',a:true,eye:true},
+    {l:'taxas entregadores',v:R(TF),s:'',a:false,eye:true},
+    {l:'resultado líquido',v:R(LQ),s:'',a:true,eye:true},
+    {l:'ticket médio',v:R(TM),s:'',a:false,eye:true},
+    {l:'repasse iFood',v:R(ifRep),s:'',a:false,eye:true},
+  ].map(function(m,i){
+    var eyeBtn=m.eye?'<button class="eye-btn" onclick="toggleMetric(this)" title="ocultar/exibir">👁</button>':'';
+    return '<div class="metric'+(m.a?' ma':'')+'">'+eyeBtn+'<div class="ml">'+m.l+'</div><div class="mv">'+m.v+'</div><div class="ms">'+m.s+'</div></div>';
+  }).join('');
 
   var CR={};
   PDfin.forEach(function(p){if(!CR[p.courier])CR[p.courier]={n:0,f:0,dFee:0};CR[p.courier].n++;CR[p.courier].f+=p.cFee;CR[p.courier].dFee+=p.dFee;});
