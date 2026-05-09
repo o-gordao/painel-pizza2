@@ -567,7 +567,7 @@ function processar(foodyArr,cwArr,data){
         troco=parseFloat(det.payments[0].change_for);
     }
     var obj={
-      id:String(c.display_id||String(c.id).slice(-5)),idNum:c.display_id||c.id,hora:hora,horaEntrega:null,
+      id:c.display_id?String(c.display_id):String(c.id).slice(-5),idNum:c.display_id||c.id,hora:hora,horaEntrega:null,
       status:c.status,isCancelled:isCancelled,fonte:'cw',
       dFee:dFee,pgto:pgto,cFee:0,tot:tot,
       courier:isTakeout?'Retirada':'iFood Entrega',
@@ -648,11 +648,10 @@ function buscarDetalhes(cwArr){
                 // atualizar tot, pgto e id com display_id real
                 if(!p.tot){p.tot=+det.total||0;p.dFee=+det.delivery_fee||0;}
                 if(p.pgto==='online'&&det.payments)p.pgto=pgtoFromCW(det.payments);
-                if(det.display_id){
+                if(det.display_id && p.id!==String(det.display_id)){
                   var oldId=p.id;
                   p.id=String(det.display_id);
                   p.idNum=det.display_id;
-                  // atualizar confMap com novo id
                   if(confMap[oldId]){confMap[p.id]=true;delete confMap[oldId];}
                 }
               }
