@@ -326,13 +326,13 @@ hr.d{border:none;border-top:1px solid var(--border);margin:5px 0}
       <div style="font-size:12px;color:var(--muted);margin-bottom:10px">Clique nos pedidos prontos ou digite os números</div>
       <div style="margin-bottom:10px">
         <div style="font-size:11px;color:var(--muted);margin-bottom:8px;text-transform:uppercase;letter-spacing:.5px">pedidos disponíveis</div>
-        <div id="rotas-disp" style="display:flex;flex-wrap:wrap;gap:6px"></div>
+        <div id="rotas-pedidos-disponiveis" style="display:flex;flex-wrap:wrap;gap:6px"></div>
       </div>
       <div style="display:flex;gap:8px;align-items:flex-start;flex-wrap:wrap;margin-bottom:8px">
-        <input type="text" id="rotas-input" class="rota-input" style="margin-bottom:0;flex:1;min-width:200px" placeholder="Ex: 11583, 11584" oninput="validarDuplic()">
+        <input type="text" id="rotas-numeros" class="rota-input" style="margin-bottom:0;flex:1;min-width:200px" placeholder="Ex: 11583, 11584" oninput="validarDuplicatasInput()">
         <button class="btn btn-a" id="btn-criar-rota" onclick="criarRota()">🛵 enviar para expedição</button>
       </div>
-      <div id="rotas-fb" style="font-size:12px;min-height:18px"></div>
+      <div id="rotas-feedback" style="font-size:12px;min-height:18px"></div>
     </div>
     <div class="sc">
       <div style="display:flex;align-items:center;gap:8px;margin-bottom:12px">
@@ -352,7 +352,7 @@ hr.d{border:none;border-top:1px solid var(--border);margin:5px 0}
     </div>
     <div class="sc">
       <div class="sc-title">histórico de rotas</div>
-      <div id="rotas-hist"><div style="text-align:center;color:var(--muted);padding:12px">—</div></div>
+      <div id="rotas-historico"><div style="text-align:center;color:var(--muted);padding:12px">—</div></div>
     </div>
   </div>
 </div>
