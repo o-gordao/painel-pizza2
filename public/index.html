@@ -570,7 +570,7 @@ function processar(foodyArr,cwArr,data){
     if(c.payments&&c.payments[0]){
       var pt=c.payments[0].payment_type;
       var pm=c.payments[0].payment_method;
-      if(pt==='offline'){pgto=pm==='credit_card'||pm==='debit_card'?'card':pm==='pix'?'pix':'money';}
+      if(pt==='offline'){pgto=pm==='credit_card'||pm==='debit_card'?'card':pm==='pix'||pm==='PIX'?'pix':pm==='money'?'money':'money';}
       else{pgto='online';}
     }
     var canal=c.sales_channel||'catalog';
@@ -627,10 +627,10 @@ function aplicarDetalhesCW(p, det){
   p.comissao=comissao;p.taxaPgto=taxaPgto;
   p.repasse=(!p.isCancelled&&isIfoodCh&&!isTakeout)?baseComissao-comissao-taxaPgto:null;
   if(!p.isCancelled&&det.updated_at)p.horaEntrega=det.updated_at.substring(11,16);
-  // troco via CW payments
-  if(!p.isCancelled&&p.pgto==='money'&&!p.troco){
+  // troco via CW payments: change_for = valor que cliente paga
+  if(!p.isCancelled&&p.pgto==='money'){
     (det.payments||[]).forEach(function(pg){
-      if(pg.change_for&&pg.change_for>0)p.troco=Math.max(0,parseFloat(pg.change_for)-p.tot);
+      if(pg.change_for&&pg.change_for>0) p.troco=parseFloat(pg.change_for);
     });
   }
 }
