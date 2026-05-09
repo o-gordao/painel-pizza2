@@ -158,11 +158,6 @@ hr.d{border:none;border-top:1px solid var(--border);margin:5px 0}
       <div class="logo-sub" id="logo-sub">fechamento de caixa</div>
     </div>
   </div>
-  <div class="sb-status">
-    <span class="badge bg">● foody delivery</span>
-    <span class="badge br">● cardápio web</span>
-    <span class="badge by" id="badge-att">carregando</span>
-  </div>
   <div class="sb-nav">
     <button class="tab on" onclick="T('entregadores',this)"><span class="tab-icon">👤</span><span class="tab-label">por entregador</span></button>
     <button class="tab" onclick="T('pedidos',this)"><span class="tab-icon">📋</span><span class="tab-label">pedidos detalhados</span></button>
@@ -176,6 +171,11 @@ hr.d{border:none;border-top:1px solid var(--border);margin:5px 0}
     <div class="sb-cd" id="cd-sb">atualiza em <strong><span id="cd">60</span>s</strong></div>
     <button class="btn" id="btn-ref" onclick="carregar()" style="width:100%;justify-content:center">🔄 atualizar</button>
     <button class="btn" id="btn-tema" onclick="toggleTema()" style="width:100%;justify-content:center">🌙 tema</button>
+    <div style="display:flex;flex-direction:column;gap:4px;padding-top:4px;border-top:1px solid var(--border)">
+      <span class="badge bg">● foody delivery</span>
+      <span class="badge br">● cardápio web</span>
+      <span class="badge by" id="badge-att">carregando</span>
+    </div>
   </div>
 </nav>
 
@@ -184,12 +184,9 @@ hr.d{border:none;border-top:1px solid var(--border);margin:5px 0}
   <div class="topbar">
     <div class="tb-info" id="tb-status">aguardando...</div>
     <div style="display:flex;align-items:center;gap:8px">
-      <input type="date" id="filtro-data" class="date-input" onchange="mudarData(this.value)">
+      <button class="btn" onclick="document.getElementById('filtro-data').showPicker()" title="selecionar data" style="padding:6px 10px;font-size:16px">📅</button>
+      <input type="date" id="filtro-data" class="date-input" onchange="mudarData(this.value)" style="position:absolute;opacity:0;pointer-events:none;width:0;height:0">
       <button class="btn" id="btn-hoje" style="display:none" onclick="voltarHoje()">← hoje</button>
-    </div>
-    <div style="display:flex;gap:6px">
-      <button class="btn" onclick="exportCSV()">⬇ CSV</button>
-      <button class="btn btn-a" onclick="window.print()">🖨 imprimir</button>
     </div>
   </div>
 
@@ -739,12 +736,12 @@ function render(){
   document.getElementById('ifood-periodo').textContent='📱 repasse iFood · '+fmt(seg)+' a '+fmt(dom)+' · pago em '+fmt(qua);
 
   document.getElementById('mbox').innerHTML=[
-    {l:'total pedidos dia',v:PD.length,s:'todos os status',a:false},
-    {l:'faturamento bruto',v:R(TV),s:'pedidos finalizados',a:true},
-    {l:'taxas entregadores',v:R(TF),s:'custo operacional',a:false},
-    {l:'resultado líquido',v:R(LQ),s:'estimado',a:true},
-    {l:'ticket médio',v:R(TM),s:'pedidos finalizados',a:false},
-    {l:'repasse iFood est.',v:R(ifRep),s:'estimativa semanal',a:false},
+    {l:'total pedidos dia',v:PD.length,s:'',a:false},
+    {l:'faturamento bruto',v:R(TV),s:'',a:true},
+    {l:'taxas entregadores',v:R(TF),s:'',a:false},
+    {l:'resultado líquido',v:R(LQ),s:'',a:true},
+    {l:'ticket médio',v:R(TM),s:'',a:false},
+    {l:'repasse iFood',v:R(ifRep),s:'',a:false},
   ].map(function(m){return '<div class="metric'+(m.a?' ma':'')+'"><div class="ml">'+m.l+'</div><div class="mv">'+m.v+'</div><div class="ms">'+m.s+'</div></div>';}).join('');
 
   var CR={};
@@ -1092,10 +1089,10 @@ T=function(id,el){_T(id,el);if(id==='rotas'){atualizarPedidosDisponiveis();carre
 
 function toggleTema(){
   var isLight=document.body.classList.toggle('light');
-  document.getElementById('btn-tema').textContent=isLight?'☀️':'🌙';
+  document.getElementById('btn-tema').textContent=isLight?'☀️ tema':'🌙 tema';
   try{localStorage.setItem('tema',isLight?'light':'dark');}catch(e){}
 }
-try{if(localStorage.getItem('tema')==='light'){document.body.classList.add('light');document.getElementById('btn-tema').textContent='☀️';}}catch(e){}
+try{if(localStorage.getItem('tema')==='light'){document.body.classList.add('light');document.getElementById('btn-tema').textContent='☀️ tema';}}catch(e){}
 
 document.getElementById('filtro-data').value=hojeStr();
 carregar();
