@@ -9,6 +9,7 @@
 
 <style>
 :root{--bg:#0f0f0f;--bg2:#181818;--bg3:#222;--border:#2a2a2a;--border2:#333;--text:#f0f0f0;--muted:#888;--accent:#e8452c;--green:#2ecc71;--yellow:#f1c40f;--blue:#3498db;--purple:#9b59b6}
+body.light{--bg:#f5f5f5;--bg2:#ffffff;--bg3:#f0f0f0;--border:#e0e0e0;--border2:#d0d0d0;--text:#1a1a1a;--muted:#666;--green:#1a9e50;--blue:#2271b3;--purple:#7b44a3}
 *{box-sizing:border-box;margin:0;padding:0}
 body{font-family:'DM Sans',sans-serif;background:var(--bg);color:var(--text);font-size:14px}
 .hdr{background:var(--bg2);border-bottom:1px solid var(--border);padding:16px 24px;display:flex;align-items:center;justify-content:space-between;position:sticky;top:0;z-index:100;flex-wrap:wrap;gap:8px}
@@ -147,6 +148,7 @@ hr.d{border:none;border-top:1px solid var(--border);margin:5px 0}
     <span class="badge bg">● foody delivery</span>
     <span class="badge br">● cardápio web</span>
     <span class="badge by" id="badge-att">carregando</span>
+    <button class="btn" id="btn-tema" onclick="toggleTema()" style="font-size:15px;padding:5px 10px" title="alternar tema">🌙</button>
     <button class="btn" id="btn-ref" onclick="carregar()">🔄 atualizar</button>
     <button class="btn" onclick="exportCSV()">⬇ CSV</button>
     <button class="btn btn-a" onclick="window.print()">🖨 imprimir</button>
@@ -814,194 +816,154 @@ function abrirHistDia(data){
   }).catch(function(e){document.getElementById('hist-otb').innerHTML='<tr><td colspan="12" style="text-align:center;color:#ff6b4a">Erro: '+e.message+'</td></tr>';});
 }
 
-// ROTAS FIREBASE
-var fbDB=null,fbIniciado=false,aguardandoAnterior=0;
+// ── ROTAS (REST API sem SDK) ──────────────────────────────────
+var FB='https://pizzaria-rotas-default-rtdb.firebaseio.com';
+var aguardandoAnterior=0,rotasTimer=null;
+function horaAtualBrasil(){var d=new Date();d.setHours(d.getHours()-3);return d.toTimeString().slice(0,5);}
+function fbGet(p){return fetch(FB+p+'.json').then(function(r){return r.json();});}
+function fbPut(p,d){return fetch(FB+p+'.json',{method:'PUT',body:JSON.stringify(d)}).then(function(r){return r.json();});}
+function fbPost(p,d){return fetch(FB+p+'.json',{method:'POST',body:JSON.stringify(d)}).then(function(r){return r.json();});}
+function fbDel(p){return fetch(FB+p+'.json',{method:'DELETE'});}
+function getNums(){return(document.getElementById('rotas-numeros').value||'').split(',').map(function(s){return s.trim();}).filter(Boolean);}
 
-function iniciarFirebase(){
-  if(fbIniciado)return true;
-  try{
-    if(firebase.apps.length===0){
-      firebase.initializeApp({
-        apiKey:"AIzaSyBLtSyEOnLgIFEfNbrNk9oryQY9z5TLmsc",
-        authDomain:"pizzaria-rotas.firebaseapp.com",
-        databaseURL:"https://pizzaria-rotas-default-rtdb.firebaseio.com",
-        projectId:"pizzaria-rotas",
-        storageBucket:"pizzaria-rotas.firebasestorage.app",
-        messagingSenderId:"581001630049",
-        appId:"1:581001630049:web:08c174cdc8b04b6d453520"
-      });
-    }
-    fbDB=firebase.database();
-    fbIniciado=true;return true;
-  }catch(e){console.log('[Firebase]',e.message);return false;}
-}
-
-function iniciarListenersRotas(){
-  if(!iniciarFirebase()){
-    document.getElementById('rotas-ativas').innerHTML='<div style="color:#ff6b4a;padding:12px">Firebase indisponível</div>';return;
-  }
-  fbDB.ref('rotas').on('value',function(snap){renderRotasAtivas(snap.val()||{});});
-  fbDB.ref('aguardando').on('value',function(snap){renderAguardando(snap.val()||{});});
-  fbDB.ref('historico').on('value',function(snap){renderHistRotas(snap.val()||{});});
-}
-
-function getNums(){return (document.getElementById('rotas-input').value||'').split(',').map(function(s){return s.trim();}).filter(Boolean);}
-
-function validarDuplic(){
-  var nums=getNums();
-  if(!nums.length||!fbDB){document.getElementById('rotas-fb').innerHTML='';return;}
-  var numsExp=nums.map(function(n){return String(n).slice(-2);});
-  fbDB.ref('rotas').get().then(function(snap){
-    var rotas=snap.val()||{},erros=[];
-    numsExp.forEach(function(n,i){Object.values(rotas).forEach(function(r){if((r.numeros||[]).indexOf(n)!==-1)erros.push('#'+nums[i]+' já na '+r.label);});});
-    document.getElementById('rotas-fb').innerHTML=erros.length?'<span style="color:#ff6b4a">⚠ '+erros.join(' · ')+'</span>':'';
-  });
-}
-
-function criarRota(){
-  if(!iniciarFirebase()){mostrarToast('Firebase indisponível','red');return;}
-  var nums=getNums();
-  if(!nums.length){document.getElementById('rotas-fb').innerHTML='<span style="color:#ff6b4a">⚠ Selecione ao menos um pedido</span>';return;}
-  var btn=document.getElementById('btn-criar-rota');
-  btn.disabled=true;btn.textContent='enviando...';
-  var numsExp=nums.map(function(n){return String(n).slice(-2);});
-  fbDB.ref('rotas').get().then(function(snap){
-    var rotas=snap.val()||{},erros=[];
-    numsExp.forEach(function(n,i){Object.values(rotas).forEach(function(r){if((r.numeros||[]).indexOf(n)!==-1)erros.push('#'+nums[i]+' já na '+r.label);});});
-    if(erros.length){
-      document.getElementById('rotas-fb').innerHTML='<span style="color:#ff6b4a">⚠ '+erros.join(' · ')+'</span>';
-      btn.disabled=false;btn.textContent='🛵 enviar para expedição';return;
-    }
-    return fbDB.ref('contador').get().then(function(snapC){
-      var c=(snapC.val()||0)+1;
-      return fbDB.ref('contador').set(c).then(function(){
-        return fbDB.ref('rotas').push({label:'Rota '+c,numeros:numsExp,hora:horaAtual(),status:'pendente',alterada:false,foiAlterada:false,horaAlteracao:null});
-      }).then(function(){
-        document.getElementById('rotas-fb').innerHTML='<span style="color:var(--green)">✅ Rota '+c+' enviada!</span>';
-        document.getElementById('rotas-input').value='';
-        atualizarDisponiveis();
-        btn.disabled=false;btn.textContent='🛵 enviar para expedição';
-      });
-    });
-  }).catch(function(e){
-    document.getElementById('rotas-fb').innerHTML='<span style="color:#ff6b4a">⚠ '+e.message+'</span>';
-    btn.disabled=false;btn.textContent='🛵 enviar para expedição';
-  });
-}
-
-function editarRota(key){
-  var div=document.getElementById('edit-'+key);
-  div.style.display=div.style.display==='none'?'block':'none';
-}
-
-function salvarEdicao(key){
-  var novosNums=(document.getElementById('ei-'+key).value||'').split(',').map(function(s){return s.trim();}).filter(Boolean);
-  if(!novosNums.length)return;
-  var numsExp=novosNums.map(function(n){return String(n).slice(-2);});
-  fbDB.ref('rotas').get().then(function(snap){
-    var rotas=snap.val()||{},erros=[];
-    numsExp.forEach(function(n,i){
-      Object.entries(rotas).forEach(function(entry){
-        if(entry[0]===key)return;
-        if((entry[1].numeros||[]).indexOf(n)!==-1)erros.push('#'+novosNums[i]+' já na '+entry[1].label);
-      });
-    });
-    if(erros.length){alert('⚠ '+erros.join('\n'));return;}
-    fbDB.ref('rotas/'+key).update({numeros:numsExp,alterada:true,foiAlterada:true,horaAlteracao:horaAtual()}).then(function(){
-      document.getElementById('edit-'+key).style.display='none';
-    });
-  });
-}
-
-function liberarRota(key,label,numeros,hora,horaSaiu,foiAlterada){
-  fbDB.ref('aguardando/'+key).remove().then(function(){
-    return fbDB.ref('historico').push({label:label,numeros:numeros,hora:hora,horaSaiu:horaSaiu,horaLiberado:horaAtual(),foiAlterada:foiAlterada||false});
-  });
-}
-
-function renderRotasAtivas(rotas){
-  var div=document.getElementById('rotas-ativas');
-  var entries=Object.entries(rotas);
-  document.getElementById('rotas-count').textContent=entries.length?'('+entries.length+')':'';
-  if(!entries.length){div.innerHTML='<div style="text-align:center;color:var(--muted);padding:16px">Nenhuma rota ativa</div>';return;}
-  div.innerHTML=entries.map(function(entry){
-    var key=entry[0],r=entry[1];
-    var numsArr=r.numeros||[];
-    return '<div class="rota-card'+(r.alterada?' alt':'')+'"><div style="display:flex;align-items:center;justify-content:space-between;margin-bottom:8px"><span style="font-size:15px;font-weight:700">'+r.label+'</span>'+(r.alterada?'<span style="font-size:11px;background:rgba(230,126,34,.15);color:#e67e22;padding:2px 8px;border-radius:20px">⚠ Alterada</span>':'')+'</div><div style="margin-bottom:8px">'+numsArr.map(function(n){return '<span class="rota-num">'+n+'</span>';}).join('')+'</div><div style="font-size:11px;color:var(--muted);margin-bottom:10px">Enviada às '+r.hora+(r.horaAlteracao?' · Editada às '+r.horaAlteracao:'')+'</div><button class="btn" style="width:100%;margin-bottom:6px" onclick="editarRota(\''+key+'\')">✏ Editar rota</button><div id="edit-'+key+'" style="display:none;margin-top:6px"><input id="ei-'+key+'" class="rota-input" placeholder="Números separados por vírgula" value="'+numsArr.join(', ')+'"><div style="display:flex;gap:6px"><button class="btn btn-a" style="flex:1" onclick="salvarEdicao(\''+key+'\')">✓ Salvar</button><button class="btn" onclick="editarRota(\''+key+'\')">Cancelar</button></div></div></div>';
-  }).join('');
-}
-
-function renderAguardando(aguardando){
-  var div=document.getElementById('rotas-aguardando');
-  var entries=Object.entries(aguardando);
-  var badge=document.getElementById('aguard-badge');
-  if(entries.length>aguardandoAnterior&&aguardandoAnterior>=0&&document.getElementById('panel-rotas').classList.contains('on')){
-    mostrarToast('🔔 Nova rota aguardando liberação!','yellow');
-  }
-  aguardandoAnterior=entries.length;
-  badge.innerHTML=entries.length?'<span class="nbadge">'+entries.length+'</span>':'';
-  if(!entries.length){div.innerHTML='<div style="text-align:center;color:var(--muted);padding:12px">Nenhuma aguardando</div>';return;}
-  div.innerHTML=entries.map(function(entry){
-    var key=entry[0],r=entry[1];
-    var numsArr=r.numeros||[];
-    var foiAlt=r.foiAlterada||false;
-    return '<div class="aguard-card"><div style="font-size:15px;font-weight:700;margin-bottom:8px">'+r.label+'</div><div style="margin-bottom:8px">'+numsArr.map(function(n){return '<span class="rota-num">'+n+'</span>';}).join('')+'</div><div style="font-size:11px;color:var(--muted);margin-bottom:10px">Enviada às '+r.hora+' · Saiu às '+(r.horaSaiu||'—')+'</div><button class="btn btn-a" style="width:100%" onclick="liberarRota(\''+key+'\',\''+r.label+'\','+JSON.stringify(numsArr)+',\''+r.hora+'\',\''+(r.horaSaiu||'')+'\','+foiAlt+')">✓ Liberar para entrega</button></div>';
-  }).join('');
-}
-
-function renderHistRotas(historico){
-  var div=document.getElementById('rotas-hist');
-  var entries=Object.entries(historico);
-  if(!entries.length){div.innerHTML='<div style="text-align:center;color:var(--muted);padding:12px">Sem histórico</div>';return;}
-  entries.sort(function(a,b){
-    var na=parseInt((a[1].label||'').replace(/[^0-9]/g,''))||0;
-    var nb=parseInt((b[1].label||'').replace(/[^0-9]/g,''))||0;
-    return nb-na;
-  });
-  div.innerHTML=entries.slice(0,20).map(function(entry){
-    var r=entry[1];
-    return '<div style="display:flex;align-items:center;justify-content:space-between;padding:9px 0;border-bottom:1px solid var(--border);gap:8px;flex-wrap:wrap"><span style="font-weight:600;min-width:70px">'+r.label+'</span><div>'+(r.numeros||[]).map(function(n){return '<span class="rota-num-sm">'+n+'</span>';}).join('')+'</div><span style="font-size:11px;color:var(--muted)">'+r.hora+' → '+(r.horaSaiu||'—')+(r.foiAlterada?' · ✏':'')+'</span></div>';
-  }).join('');
-}
-
-function atualizarDisponiveis(){
-  var div=document.getElementById('rotas-disp');
-  if(!div)return;
-  var statusValidos=['open','accepted','ready','dispatched'];
-  var disponiveis=PD.filter(function(p){return statusValidos.indexOf(p.status)!==-1;});
-  if(!disponiveis.length){div.innerHTML='<span style="font-size:12px;color:var(--muted)">Nenhum pedido disponível</span>';return;}
-  var selecionados=getNums();
-  div.innerHTML=disponiveis.map(function(p){
-    var sel=selecionados.indexOf(p.id)!==-1;
-    return '<button onclick="togglePedidoRota(\''+p.id+'\')" style="padding:5px 12px;border-radius:6px;border:1px solid '+(sel?'var(--green)':'var(--border2)')+';background:'+(sel?'rgba(46,204,113,.15)':'var(--bg3)')+';color:'+(sel?'var(--green)':'var(--text)')+';cursor:pointer;font-size:12px;font-family:\'DM Mono\',monospace">#'+p.id+' · '+p.courier.split(' ')[0]+'</button>';
+function atualizarPedidosDisponiveis(){
+  var div=document.getElementById('rotas-pedidos-disponiveis');if(!div)return;
+  var ok=['open','accepted','ready','dispatched'];
+  var lista=PD.filter(function(p){return ok.indexOf(p.status)!==-1;});
+  if(!lista.length){div.innerHTML='<span style="font-size:12px;color:var(--muted)">nenhum pedido disponível</span>';return;}
+  var sel=getNums();
+  div.innerHTML=lista.map(function(p){
+    var s=sel.indexOf(p.id)!==-1;
+    return '<button onclick="togglePedidoRota(\''+p.id+'\')" style="padding:5px 12px;border-radius:6px;border:1px solid '+(s?'var(--green)':'var(--border2)')+';background:'+(s?'rgba(46,204,113,.15)':'var(--bg3)')+';color:'+(s?'var(--green)':'var(--text)')+';cursor:pointer;font-size:12px;font-family:\'DM Mono\',monospace">#'+p.id+' · '+p.courier.split(' ')[0]+'</button>';
   }).join('');
 }
 function togglePedidoRota(id){
   var nums=getNums(),idx=nums.indexOf(id);
   if(idx===-1)nums.push(id);else nums.splice(idx,1);
-  document.getElementById('rotas-input').value=nums.join(', ');
-  atualizarDisponiveis();validarDuplic();
+  document.getElementById('rotas-numeros').value=nums.join(', ');
+  atualizarPedidosDisponiveis();validarDuplicatasInput();
 }
+function validarDuplicatasInput(){
+  var nums=getNums();if(!nums.length){document.getElementById('rotas-feedback').innerHTML='';return;}
+  var numsExp=nums.map(function(n){return String(n).slice(-2);});
+  fbGet('/rotas').then(function(rotas){
+    rotas=rotas||{};var erros=[];
+    numsExp.forEach(function(n,i){Object.values(rotas).forEach(function(r){if((r.numeros||[]).indexOf(n)!==-1)erros.push('#'+nums[i]+' já em '+r.label);});});
+    document.getElementById('rotas-feedback').innerHTML=erros.length?'<span style="color:#ff6b4a">⚠ '+erros.join(' · ')+'</span>':'';
+  });
+}
+function criarRota(){
+  var nums=getNums();
+  if(!nums.length){document.getElementById('rotas-feedback').innerHTML='<span style="color:#ff6b4a">⚠ Selecione ao menos um pedido</span>';return;}
+  var btn=document.getElementById('btn-criar-rota');btn.disabled=true;btn.textContent='enviando...';
+  var numsExp=nums.map(function(n){return String(n).slice(-2);});
+  fbGet('/rotas').then(function(rotas){
+    rotas=rotas||{};var erros=[];
+    numsExp.forEach(function(n,i){Object.values(rotas).forEach(function(r){if((r.numeros||[]).indexOf(n)!==-1)erros.push('#'+nums[i]+' já em '+r.label);});});
+    if(erros.length){document.getElementById('rotas-feedback').innerHTML='<span style="color:#ff6b4a">⚠ '+erros.join(' · ')+'</span>';btn.disabled=false;btn.textContent='🛵 enviar para expedição';return;}
+    fbGet('/contador').then(function(c){
+      var novo=(c||0)+1;
+      fbPut('/contador',novo).then(function(){
+        fbPost('/rotas',{label:'Rota '+novo,numeros:numsExp,hora:horaAtualBrasil(),status:'pendente',alterada:false,foiAlterada:false,horaAlteracao:null}).then(function(){
+          document.getElementById('rotas-feedback').innerHTML='<span style="color:var(--green)">✅ Rota '+novo+' enviada!</span>';
+          document.getElementById('rotas-numeros').value='';atualizarPedidosDisponiveis();carregarRotas();
+          btn.disabled=false;btn.textContent='🛵 enviar para expedição';
+        });
+      });
+    });
+  }).catch(function(e){document.getElementById('rotas-feedback').innerHTML='<span style="color:#ff6b4a">⚠ '+e.message+'</span>';btn.disabled=false;btn.textContent='🛵 enviar para expedição';});
+}
+function editarRota(key,label,nums){
+  var div=document.getElementById('edit-'+key);
+  div.style.display=div.style.display==='none'?'block':'none';
+  if(div.style.display==='block')document.getElementById('edit-input-'+key).value=nums.join(', ');
+}
+function salvarEdicao(key){
+  var novos=(document.getElementById('edit-input-'+key).value||'').split(',').map(function(s){return s.trim();}).filter(Boolean);
+  if(!novos.length)return;
+  var numsExp=novos.map(function(n){return String(n).slice(-2);});
+  fbGet('/rotas').then(function(rotas){
+    rotas=rotas||{};var erros=[];
+    numsExp.forEach(function(n,i){Object.entries(rotas).forEach(function(e){if(e[0]!==key&&(e[1].numeros||[]).indexOf(n)!==-1)erros.push('#'+novos[i]+' já em '+e[1].label);});});
+    if(erros.length){alert('⚠ '+erros.join('\n'));return;}
+    fbPut('/rotas/'+key+'/numeros',numsExp);
+    fbPut('/rotas/'+key+'/alterada',true);
+    fbPut('/rotas/'+key+'/foiAlterada',true);
+    fbPut('/rotas/'+key+'/horaAlteracao',horaAtualBrasil());
+    document.getElementById('edit-'+key).style.display='none';carregarRotas();
+  });
+}
+function liberarRota(key,dados){
+  fbDel('/aguardando/'+key).then(function(){
+    fbPost('/historico',{label:dados.label,numeros:dados.numeros,hora:dados.hora,horaSaiu:dados.horaSaiu,horaLiberado:horaAtualBrasil(),foiAlterada:dados.foiAlterada||false});
+    carregarRotas();
+  });
+}
+function carregarRotas(){
+  clearTimeout(rotasTimer);
+  Promise.all([fbGet('/rotas'),fbGet('/aguardando'),fbGet('/historico')]).then(function(res){
+    renderRotasAtivas(res[0]||{});renderAguardando(res[1]||{});renderHistoricoRotas(res[2]||{});
+  }).catch(function(e){document.getElementById('rotas-ativas').innerHTML='<div style="color:#ff6b4a;padding:12px">Erro Firebase: '+e.message+'</div>';});
+  rotasTimer=setTimeout(function(){if(document.getElementById('panel-rotas').classList.contains('on'))carregarRotas();},10000);
+}
+function renderRotasAtivas(rotas){
+  var div=document.getElementById('rotas-ativas'),entries=Object.entries(rotas);
+  document.getElementById('rotas-count').textContent=entries.length?'('+entries.length+')':'';
+  if(!entries.length){div.innerHTML='<div style="text-align:center;color:var(--muted);padding:16px">Nenhuma rota ativa</div>';return;}
+  div.innerHTML=entries.map(function(e){
+    var key=e[0],r=e[1],nj=JSON.stringify(r.numeros||[]);
+    return '<div class="rota-card'+(r.alterada?' alterada':'')+'">'
+      +'<div style="display:flex;align-items:center;justify-content:space-between;margin-bottom:8px"><div class="rota-label">'+r.label+'</div>'
+      +(r.alterada?'<span style="font-size:11px;background:rgba(230,126,34,.15);color:#e67e22;padding:2px 8px;border-radius:20px">⚠ Alterada</span>':'')+'</div>'
+      +'<div class="rota-nums">'+(r.numeros||[]).map(function(n){return '<span class="rota-num">'+n+'</span>';}).join('')+'</div>'
+      +'<div class="rota-hora" style="margin-bottom:10px">Enviada às '+r.hora+(r.horaAlteracao?' · Editada às '+r.horaAlteracao:'')+'</div>'
+      +'<button class="btn" style="width:100%;margin-bottom:6px" onclick="editarRota(\''+key+'\',\''+r.label+'\','+nj+')">✏ Editar rota</button>'
+      +'<div id="edit-'+key+'" style="display:none;margin-top:8px"><input id="edit-input-'+key+'" class="rota-edit-input" placeholder="Números por vírgula">'
+      +'<div style="display:flex;gap:6px"><button class="btn btn-a" style="flex:1" onclick="salvarEdicao(\''+key+'\')">✓ Salvar</button>'
+      +'<button class="btn" onclick="editarRota(\''+key+'\',\'\',\'\')">Cancelar</button></div></div></div>';
+  }).join('');
+}
+function renderAguardando(aguard){
+  var div=document.getElementById('rotas-aguardando'),entries=Object.entries(aguard);
+  var badge=document.getElementById('aguard-badge');
+  if(entries.length>aguardandoAnterior&&document.getElementById('panel-rotas').classList.contains('on'))mostrarToast('🔔 Nova rota aguardando liberação!','yellow');
+  aguardandoAnterior=entries.length;
+  badge.innerHTML=entries.length?'<span class="notif-badge">'+entries.length+'</span>':'';
+  if(!entries.length){div.innerHTML='<div style="text-align:center;color:var(--muted);padding:12px">Nenhuma aguardando</div>';return;}
+  div.innerHTML=entries.map(function(e){
+    var key=e[0],r=e[1],enc=encodeURIComponent(JSON.stringify(r));
+    return '<div class="aguard-card"><div class="rota-label">'+r.label+'</div>'
+      +'<div class="rota-nums">'+(r.numeros||[]).map(function(n){return '<span class="rota-num">'+n+'</span>';}).join('')+'</div>'
+      +'<div class="rota-hora" style="margin-bottom:10px">Enviada às '+r.hora+' · Saiu às '+(r.horaSaiu||'—')+'</div>'
+      +'<button class="btn btn-a" style="width:100%" onclick="liberarRota(\''+key+'\',JSON.parse(decodeURIComponent(\''+enc+'\')))">✓ Liberar para entrega</button></div>';
+  }).join('');
+}
+function renderHistoricoRotas(hist){
+  var div=document.getElementById('rotas-historico'),entries=Object.entries(hist);
+  if(!entries.length){div.innerHTML='<div style="text-align:center;color:var(--muted);padding:12px">Sem rotas no histórico</div>';return;}
+  entries.sort(function(a,b){return (parseInt((b[1].label||'').replace(/[^0-9]/g,''))||0)-(parseInt((a[1].label||'').replace(/[^0-9]/g,''))||0);});
+  div.innerHTML=entries.slice(0,20).map(function(e){
+    var r=e[1];
+    return '<div style="display:flex;align-items:center;justify-content:space-between;padding:9px 0;border-bottom:1px solid var(--border);gap:8px;flex-wrap:wrap">'
+      +'<span style="font-weight:600;min-width:70px">'+r.label+'</span>'
+      +'<div style="display:flex;gap:4px;flex-wrap:wrap">'+(r.numeros||[]).map(function(n){return '<span style="background:var(--bg3);border:1px solid var(--border);padding:2px 8px;border-radius:6px;font-family:\'DM Mono\',monospace;font-size:16px;font-weight:700">'+n+'</span>';}).join('')+'</div>'
+      +'<span style="font-size:11px;color:var(--muted)">'+r.hora+' → '+(r.horaSaiu||'—')+(r.foiAlterada?' ✏':'')+'</span></div>';
+  }).join('');
+}
+var _T=T;
+T=function(id,el){_T(id,el);if(id==='rotas'){atualizarPedidosDisponiveis();carregarRotas();}};
+// ── FIM ROTAS ─────────────────────────────────────────────────
 
-function T(id,el){
-  document.querySelectorAll('.panel').forEach(function(p){p.classList.remove('on');});
-  document.querySelectorAll('.tab').forEach(function(b){b.classList.remove('on');});
-  document.getElementById('panel-'+id).classList.add('on');el.classList.add('on');
-  if(id==='rotas'){atualizarDisponiveis();iniciarListenersRotas();}
+function toggleTema(){
+  var isLight=document.body.classList.toggle('light');
+  document.getElementById('btn-tema').textContent=isLight?'☀️':'🌙';
+  localStorage.setItem('tema',isLight?'light':'dark');
 }
-
-function exportCSV(){
-  var h=['pedido','cliente','entregador','canal','pgto','status','entrega','desc_loja','desc_ifood','comissao','total','repasse'];
-  var rows=PD.map(function(p){return [p.id,p.client,p.courier,p.canal,p.pgto,p.status,p.deliveredBy||'',p.descLoja.toFixed(2),p.descIfood.toFixed(2),p.comissao.toFixed(2),p.tot.toFixed(2),p.repasse!==null?p.repasse.toFixed(2):''].join(',');});
-  var a=document.createElement('a');
-  a.href=URL.createObjectURL(new Blob([[h.join(',')].concat(rows).join('\n')],{type:'text/csv'}));
-  a.download='fechamento.csv';a.click();
-}
+// restaurar tema salvo
+if(localStorage.getItem('tema')==='light'){document.body.classList.add('light');document.getElementById('btn-tema').textContent='☀️';}
 
 document.getElementById('filtro-data').value=hojeStr();
 carregar();
 </script>
-<script src="https://www.gstatic.com/firebasejs/9.23.0/firebase-app-compat.js"></script>
-<script src="https://www.gstatic.com/firebasejs/9.23.0/firebase-database-compat.js"></script>
 </body>
 </html>
