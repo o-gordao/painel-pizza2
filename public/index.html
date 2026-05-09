@@ -510,12 +510,14 @@ function processar(foodyArr, cwArr, data){
       canal:canal, cwId:cwId,
       // catálogo/portal/whatsapp = sempre entrega própria; ifood = depende do CW
       deliveredBy: canal!=='ifood' ? 'foody_delivery' : null,
-      descIfood:0, descLoja:0, comissao:0, taxaPgto:0, repasse:null
+      descIfood:0, descLoja:0, comissao:0, taxaPgto:0, repasse:null, troco:0
     });
   });
   novos.sort(function(a,b){return a.idNum-b.idNum;});
   // reaplicar detalhes já em cache (evita perder dados ao atualizar)
   novos.forEach(function(p){
+    // preservar troco digitado manualmente
+    CS.forEach(function(old){if(old.id===p.id && old.troco>0) p.troco=old.troco;});
     if(p.cwId && cwDetalhes[p.cwId]) aplicarDetalhes(p, cwDetalhes[p.cwId]);
   });
   PD=novos;
