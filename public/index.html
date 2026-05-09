@@ -170,9 +170,9 @@ hr.d{border:none;border-top:1px solid var(--border);margin:5px 0}
     <button class="tab" onclick="T('conferencia',this)"><span class="tab-icon">✅</span><span class="tab-label">conferência <span class="tab-badge" id="notif-conf">0</span></span></button>
     <button class="tab" onclick="T('historico',this);carregarHistorico()"><span class="tab-icon">📅</span><span class="tab-label">histórico</span></button>
     <button class="tab" onclick="T('rotas',this)"><span class="tab-icon">🛵</span><span class="tab-label">rotas <span class="tab-badge" id="notif-rotas"></span></span></button>
-    <div id="badge-att" style="font-size:11px;color:var(--muted);font-family:'DM Mono',monospace;padding:10px 16px;margin-top:4px">aguardando...</div>
   </div>
   <div class="sb-bottom">
+    <div id="badge-att" style="font-size:11px;color:var(--muted);font-family:'DM Mono',monospace;text-align:center;padding-bottom:6px;border-bottom:1px solid var(--border)">aguardando...</div>
     <div id="tb-status" style="display:none"></div>
     <div class="sb-cd" id="cd-sb">atualiza em <strong><span id="cd">60</span>s</strong></div>
     <button class="btn" id="btn-ref" onclick="carregar()" style="width:100%;justify-content:center">🔄 atualizar</button>
