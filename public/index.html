@@ -158,6 +158,10 @@ hr.d{border:none;border-top:1px solid var(--border);margin:5px 0}
       <div class="logo-sub" id="logo-sub">fechamento de caixa</div>
     </div>
   </div>
+  <div style="padding:10px 14px;border-bottom:1px solid var(--border);display:flex;flex-direction:column;gap:4px">
+    <span class="badge bg">● foody delivery</span>
+    <span class="badge br">● cardápio web</span>
+  </div>
   <div class="sb-nav">
     <button class="tab on" onclick="T('entregadores',this)"><span class="tab-icon">👤</span><span class="tab-label">por entregador</span></button>
     <button class="tab" onclick="T('pedidos',this)"><span class="tab-icon">📋</span><span class="tab-label">pedidos detalhados</span></button>
@@ -166,23 +170,20 @@ hr.d{border:none;border-top:1px solid var(--border);margin:5px 0}
     <button class="tab" onclick="T('conferencia',this)"><span class="tab-icon">✅</span><span class="tab-label">conferência <span class="tab-badge" id="notif-conf">0</span></span></button>
     <button class="tab" onclick="T('historico',this);carregarHistorico()"><span class="tab-icon">📅</span><span class="tab-label">histórico</span></button>
     <button class="tab" onclick="T('rotas',this)"><span class="tab-icon">🛵</span><span class="tab-label">rotas <span class="tab-badge" id="notif-rotas"></span></span></button>
+    <div id="badge-att" style="font-size:11px;color:var(--muted);font-family:'DM Mono',monospace;padding:10px 16px;margin-top:4px">aguardando...</div>
   </div>
   <div class="sb-bottom">
+    <div id="tb-status" style="display:none"></div>
     <div class="sb-cd" id="cd-sb">atualiza em <strong><span id="cd">60</span>s</strong></div>
     <button class="btn" id="btn-ref" onclick="carregar()" style="width:100%;justify-content:center">🔄 atualizar</button>
     <button class="btn" id="btn-tema" onclick="toggleTema()" style="width:100%;justify-content:center">🌙 tema</button>
-    <div style="display:flex;flex-direction:column;gap:4px;padding-top:4px;border-top:1px solid var(--border)">
-      <span class="badge bg">● foody delivery</span>
-      <span class="badge br">● cardápio web</span>
-      <span class="badge by" id="badge-att">carregando</span>
-    </div>
+
   </div>
 </nav>
 
 <!-- LAYOUT PRINCIPAL -->
 <div class="layout">
   <div class="topbar">
-    <div class="tb-info" id="tb-status">aguardando...</div>
     <div style="display:flex;align-items:center;gap:8px">
       <button class="btn" onclick="document.getElementById('filtro-data').showPicker()" title="selecionar data" style="padding:6px 10px;font-size:16px">📅</button>
       <input type="date" id="filtro-data" class="date-input" onchange="mudarData(this.value)" style="position:absolute;opacity:0;pointer-events:none;width:0;height:0">
@@ -484,6 +485,7 @@ function carregar(){
     var agora=new Date().toLocaleTimeString('pt-BR',{hour:'2-digit',minute:'2-digit'});
     document.getElementById('badge-att').textContent='✓ '+agora;
     document.getElementById('logo-sub').textContent='fechamento · '+fmtData(hoje);
+    document.getElementById('badge-att').textContent='✓ Foody:'+foodyArr.length+' CW:'+cwArr.length+' · '+agora;
     document.getElementById('tb-status').textContent='✓ Foody:'+foodyArr.length+' CW:'+cwArr.length+' · '+agora;
     buscarDetalhes(cwArr);
   }).catch(function(e){
