@@ -344,17 +344,10 @@ hr.d{border:none;border-top:1px solid var(--border);margin:5px 0}
   <!-- ROTAS -->
   <div id="panel-rotas" class="panel">
     <div class="sc">
-      <div class="sc-title">🛵 criar nova rota</div>
-      <div style="font-size:12px;color:var(--muted);margin-bottom:10px">Clique nos pedidos prontos ou digite os números</div>
-      <div style="margin-bottom:10px">
-        <div style="font-size:11px;color:var(--muted);margin-bottom:8px;text-transform:uppercase;letter-spacing:.5px">pedidos disponíveis</div>
-        <div id="rotas-pedidos-disponiveis" style="display:flex;flex-wrap:wrap;gap:6px"></div>
-      </div>
-      <div style="display:flex;gap:8px;align-items:flex-start;flex-wrap:wrap;margin-bottom:8px">
-        <input type="text" id="rotas-numeros" class="rota-input" style="margin-bottom:0;flex:1;min-width:200px" placeholder="Ex: 11583, 11584" oninput="validarDuplicatasInput()">
-        <button class="btn btn-a" id="btn-criar-rota" onclick="criarRota()">🛵 enviar para expedição</button>
-      </div>
-      <div id="rotas-feedback" style="font-size:12px;min-height:18px"></div>
+      <div class="sc-title">números dos pedidos</div>
+      <input type="text" id="rotas-numeros" class="rota-input" placeholder="Ex: 44, 45, 46" style="margin-bottom:8px">
+      <button class="btn btn-a" id="btn-criar-rota" onclick="criarRota()" style="width:100%;padding:10px;font-size:13px">🛵 Enviar para Expedição</button>
+      <div id="rotas-feedback" style="font-size:12px;min-height:18px;margin-top:6px"></div>
     </div>
     <div class="sc">
       <div style="display:flex;align-items:center;gap:8px;margin-bottom:12px">
@@ -364,16 +357,14 @@ hr.d{border:none;border-top:1px solid var(--border);margin:5px 0}
       <div id="rotas-aguardando"><div style="text-align:center;color:var(--muted);padding:12px">Nenhuma aguardando</div></div>
     </div>
     <div class="sc">
-      <div style="display:flex;align-items:center;justify-content:space-between;margin-bottom:12px">
-        <div style="display:flex;align-items:center;gap:8px">
-          <div class="sc-title" style="margin-bottom:0">rotas ativas</div>
-          <span id="rotas-count" style="font-size:11px;color:var(--muted)"></span>
-        </div>
+      <div style="display:flex;align-items:center;gap:8px;margin-bottom:12px">
+        <div class="sc-title" style="margin-bottom:0">rotas ativas</div>
+        <span id="rotas-count" style="font-size:11px;color:var(--muted)"></span>
       </div>
       <div id="rotas-ativas"><div style="text-align:center;color:var(--muted);padding:20px">Conectando ao Firebase...</div></div>
     </div>
     <div class="sc">
-      <div class="sc-title">histórico de rotas</div>
+      <div class="sc-title">histórico</div>
       <div id="rotas-historico"><div style="text-align:center;color:var(--muted);padding:12px">—</div></div>
     </div>
   </div>
@@ -1038,24 +1029,42 @@ function criarRota(){
     });
   }).catch(function(e){document.getElementById('rotas-feedback').innerHTML='<span style="color:#ff6b4a">⚠ '+e.message+'</span>';btn.disabled=false;btn.textContent='🛵 enviar para expedição';});
 }
-function editarRota(key,label,nums){
-  var div=document.getElementById('edit-'+key);
-  div.style.display=div.style.display==='none'?'block':'none';
-  if(div.style.display==='block')document.getElementById('edit-input-'+key).value=nums.join(', ');
+function toggleEditRota(btn){
+  var card=btn.closest('.rota-card');
+  var area=card.querySelector('.edit-area');
+  var showing=area.style.display==='block';
+  area.style.display=showing?'none':'block';
+  btn.textContent=showing?'✏ Editar rota':'✕ Fechar';
 }
-function salvarEdicao(key){
-  var novos=(document.getElementById('edit-input-'+key).value||'').split(',').map(function(s){return s.trim();}).filter(Boolean);
+function salvarEdicaoSimples(btn){
+  var card=btn.closest('.rota-card');
+  var key=card.dataset.key;
+  var input=card.querySelector('.rota-edit-input');
+  var novos=(input.value||'').split(',').map(function(s){return s.trim();}).filter(Boolean);
   if(!novos.length)return;
   var numsExp=novos.map(function(n){return String(n).slice(-2);});
-  fbGet('/rotas').then(function(rotas){
-    rotas=rotas||{};var erros=[];
-    numsExp.forEach(function(n,i){Object.entries(rotas).forEach(function(e){if(e[0]!==key&&(e[1].numeros||[]).indexOf(n)!==-1)erros.push('#'+novos[i]+' já em '+e[1].label);});});
-    if(erros.length){alert('⚠ '+erros.join('\n'));return;}
-    fbPut('/rotas/'+key+'/numeros',numsExp);
+  btn.disabled=true;btn.textContent='salvando...';
+  fbPut('/rotas/'+key+'/numeros',numsExp).then(function(){
     fbPut('/rotas/'+key+'/alterada',true);
     fbPut('/rotas/'+key+'/foiAlterada',true);
     fbPut('/rotas/'+key+'/horaAlteracao',horaAtualBrasil());
-    document.getElementById('edit-'+key).style.display='none';carregarRotas();
+    carregarRotas();
+  });
+}
+function confirmarSaida(btn){
+  var card=btn.closest('.aguard-card');
+  var key=card.dataset.key;
+  btn.disabled=true;btn.textContent='confirmando...';
+  fbGet('/aguardando/'+key).then(function(dados){
+    if(!dados)return;
+    fbDel('/aguardando/'+key).then(function(){
+      fbPost('/historico',{
+        label:dados.label,numeros:dados.numeros,hora:dados.hora,
+        horaSaiu:dados.horaSaiu||horaAtualBrasil(),
+        horaLiberado:horaAtualBrasil(),foiAlterada:dados.foiAlterada||false
+      });
+      carregarRotas();
+    });
   });
 }
 function liberarRota(key,dados){
