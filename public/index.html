@@ -402,7 +402,7 @@ hr.d{border:none;border-top:1px solid var(--border);margin:5px 0}
 <script>
 var COMISSAO_PROPRIA=0.11,COMISSAO_IFOOD=0.23,TAXA_PGTO_ONLINE=0.028;
 var COLS=['#e8452c','#3498db','#2ecc71','#f1c40f','#9b59b6','#e67e22','#1abc9c','#e74c3c','#34495e'];
-var PGTO_MAP={online:'online',card:'card',money:'money',pix:'pix',e_wallet:'online',on_credit:'card'};
+var PGTO_MAP={online:'online',card:'card',money:'money',pix:'pix',e_wallet:'online',on_credit:'card',cash:'money',dinheiro:'money',credit_card:'card',debit_card:'card',credit:'card',debit:'card',voucher:'card',meal_voucher:'card',bank_slip:'pix',bank_transfer:'pix'};
 var DIAS_SEM=['Domingo','Segunda','Terça','Quarta','Quinta','Sexta','Sábado'];
 var PD=[],CS=[],CF=[],charts={},cdVal=60,cdTimer=null,cwDetalhes={},modoHistorico=false;
 
@@ -570,7 +570,7 @@ function processar(foodyArr,cwArr,data){
     var obj={
       id:String(p.id),idNum:parseInt(p.id)||0,hora:hora,horaEntrega:null,
       status:p.status,isCancelled:isCancelled,fonte:'foody',
-      dFee:+p.deliveryFee||0,pgto:PGTO_MAP[p.paymentMethod]||'online',
+      dFee:+p.deliveryFee||0,pgto:PGTO_MAP[p.paymentMethod]||(canal==='ifood'?'online':'money'),
       cFee:+p.courierFee||0,tot:+p.orderTotal||0,
       courier:(p.courier&&p.courier.courierName)||'Desconhecido',
       client:(p.customer&&p.customer.customerName)||'—',
@@ -624,7 +624,7 @@ function processar(foodyArr,cwArr,data){
 
   PD=novos;
   var confMap2={};CS.forEach(function(p){if(p.conf)confMap2[p.id]=true;});
-  CS=PD.filter(function(p){return p.pgto!=='online'&&!p.isCancelled;}).map(function(p){
+  CS=PD.filter(function(p){return !(p.pgto==='online'&&p.canal==='ifood')&&!p.isCancelled;}).map(function(p){
     return Object.assign({},p,{conf:!!confMap2[p.id]||(p.pgto==='pix'),pgtoE:null});
   });
   render();
@@ -695,7 +695,7 @@ function buscarDetalhes(cwArr){
           });
           // preservar conf antes de rebuild
           var confMap={};CS.forEach(function(p){if(p.conf)confMap[p.id]=true;});
-          CS=PD.filter(function(p){return p.pgto!=='online'&&!p.isCancelled;}).map(function(p){
+          CS=PD.filter(function(p){return !(p.pgto==='online'&&p.canal==='ifood')&&!p.isCancelled;}).map(function(p){
             var pgtoE=null;
             CS.forEach(function(old){if(old.cwId&&old.cwId===p.cwId)pgtoE=old.pgtoE;});
             return Object.assign({},p,{conf:!!confMap[p.id]||(p.pgto==='pix'),pgtoE:pgtoE});
