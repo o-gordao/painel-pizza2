@@ -419,6 +419,16 @@ function startCD(){
   },1000);
 }
 
+function fetchTimeout(url, ms){
+  return new Promise(function(resolve,reject){
+    var done=false;
+    var t=setTimeout(function(){if(!done){done=true;reject(new Error('timeout'));}},ms);
+    fetch(url).then(function(r){
+      if(!done){done=true;clearTimeout(t);r.json().then(resolve).catch(reject);}
+    }).catch(function(e){if(!done){done=true;clearTimeout(t);reject(e);}});
+  });
+}
+
 function carregar(){
   modoHistorico=false;
   var btn=document.getElementById('btn-ref');
@@ -427,10 +437,13 @@ function carregar(){
   var hoje=hojeStr();
   document.getElementById('filtro-data').value=hoje;
   document.getElementById('btn-hoje').style.display='none';
+  // fallback: esconde loader após 15s mesmo se API travar
+  var loaderTimeout=setTimeout(function(){document.getElementById('loader').style.display='none';},15000);
   Promise.all([
-    fetch('/api/foody?date='+hoje).then(function(r){return r.json();}),
-    fetch('/api/cardapio?date='+hoje).then(function(r){return r.json();})
+    fetchTimeout('/api/foody?date='+hoje, 12000),
+    fetchTimeout('/api/cardapio?date='+hoje, 12000)
   ]).then(function(res){
+    clearTimeout(loaderTimeout);
     var fRes=res[0],cRes=res[1];
     var foodyArr=Array.isArray(fRes)?fRes:[];
     var cwArr=[];
@@ -453,7 +466,9 @@ function carregar(){
     document.getElementById('tb-status').textContent='✓ Foody:'+foodyArr.length+' CW:'+cwArr.length+' · '+agora;
     buscarDetalhes(cwArr);
   }).catch(function(e){
+    clearTimeout(loaderTimeout);
     document.getElementById('tb-status').textContent='⚠ erro: '+e.message;
+    document.getElementById('loader').style.display='none';
   }).finally(function(){
     btn.disabled=false;btn.innerHTML='🔄 atualizar';
     document.getElementById('loader').style.display='none';
