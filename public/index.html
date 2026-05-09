@@ -567,7 +567,7 @@ function processar(foodyArr,cwArr,data){
         troco=parseFloat(det.payments[0].change_for);
     }
     var obj={
-      id:String(c.display_id||c.id),idNum:c.display_id||c.id,hora:hora,horaEntrega:null,
+      id:String(c.display_id||String(c.id).slice(-5)),idNum:c.display_id||c.id,hora:hora,horaEntrega:null,
       status:c.status,isCancelled:isCancelled,fonte:'cw',
       dFee:dFee,pgto:pgto,cFee:0,tot:tot,
       courier:isTakeout?'Retirada':'iFood Entrega',
