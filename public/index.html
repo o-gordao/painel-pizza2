@@ -642,9 +642,16 @@ function buscarDetalhes(cwArr){
           PD.forEach(function(p){
             if(p.cwId==id){
               if(p.fonte==='cw'){
-                // atualizar tot e pgto que vieram vazios
+                // atualizar tot, pgto e id com display_id real
                 if(!p.tot){p.tot=+det.total||0;p.dFee=+det.delivery_fee||0;}
                 if(p.pgto==='online'&&det.payments)p.pgto=pgtoFromCW(det.payments);
+                if(det.display_id){
+                  var oldId=p.id;
+                  p.id=String(det.display_id);
+                  p.idNum=det.display_id;
+                  // atualizar confMap com novo id
+                  if(confMap[oldId]){confMap[p.id]=true;delete confMap[oldId];}
+                }
               }
               aplicarDetalhesCW(p,det);
             }
