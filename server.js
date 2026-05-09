@@ -67,7 +67,7 @@ app.get('/api/cardapio', async (req, res) => {
     const r = await dbGet('SELECT cw_json FROM historico WHERE data=$1', [hoje]);
     if (r?.rows[0]?.cw_json) { res.setHeader('Content-Type','application/json'); return res.send(r.rows[0].cw_json); }
   }
-  const url = 'https://integracao.cardapioweb.com/api/partner/v1/orders/history?start_date='+hoje+'T00:00:00-03:00&end_date='+hoje+'T23:59:59-03:00';
+  const url = 'https://integracao.cardapioweb.com/api/partner/v1/orders?start_date='+hoje+'T00:00:00-03:00&end_date='+hoje+'T23:59:59-03:00';
   try {
     const r = await httpGet(url, { 'X-API-KEY': CW_TOKEN, Accept: 'application/json' }, 15000);
     const data = tryJSON(r.body);
