@@ -1073,15 +1073,17 @@ function fbRenderRotas(){
   var count=document.getElementById('rotas-count');
   if(count)count.textContent=entries.length?'('+entries.length+')':'';
   if(!entries.length){div.innerHTML='<div style="text-align:center;color:var(--muted);padding:16px">Nenhuma rota ativa</div>';return;}
-  div.innerHTML=entries.map(function(e){
+  // Guarda mapa de keys para evitar aspas no onclick
+  window._fbRotaKeys=Object.keys(_rotasLocal);
+  div.innerHTML=entries.map(function(e,idx){
     var id=e[0],r=e[1];
     var editando=_editandoId===id;
     var pills=(r.numeros||[]).map(function(n){return '<span class="rota-num">'+fbEsc(n)+'</span>';}).join('');
     var meta='Enviada às '+r.hora+(r.horaAlteracao?' · Editada às '+r.horaAlteracao:'');
     var badge=r.alterada?'<span style="font-size:11px;background:rgba(230,126,34,.15);color:#e67e22;padding:2px 8px;border-radius:20px">⚠ Alterada</span>':'';
     var acoes=editando
-      ?'<div style="margin-top:8px"><input id="edit-inp-'+id+'" class="rota-edit-input" value="'+(r.numeros||[]).join(', ')+'" placeholder="Números por vírgula ou espaço"><div id="edit-warn-'+id+'" style="font-size:12px;color:#ff6b4a;min-height:14px;margin:4px 0"></div><div style="display:flex;gap:6px;margin-top:6px"><button class="btn btn-a" style="flex:1" onclick="fbSalvarEdicao(''+id+'')">✓ Salvar</button><button class="btn" onclick="fbCancelarEdicao()">Cancelar</button></div></div>'
-      :'<button class="btn" style="width:100%;margin-top:8px" onclick="fbIniciarEdicao(''+id+'')">✏ Editar rota</button>';
+      ?('<div style="margin-top:8px">'        +'<input id="edit-inp" class="rota-edit-input" value="'+(r.numeros||[]).join(', ')+'" placeholder="Números por vírgula ou espaço">'        +'<div id="edit-warn" style="font-size:12px;color:#ff6b4a;min-height:14px;margin:4px 0"></div>'        +'<div style="display:flex;gap:6px;margin-top:6px">'        +'<button class="btn btn-a" style="flex:1" onclick="fbSalvarEdicao()">✓ Salvar</button>'        +'<button class="btn" onclick="fbCancelarEdicao()">Cancelar</button></div></div>')
+      :('<button class="btn" style="width:100%;margin-top:8px" onclick="fbIniciarEdicao('+idx+')">✏ Editar rota</button>');
     return '<div class="rota-card'+(r.alterada?' alt':'')+'">'      +'<div style="display:flex;justify-content:space-between;align-items:center;margin-bottom:6px">'      +'<div class="rota-label">'+fbEsc(r.label)+'</div>'+badge+'</div>'      +'<div class="rota-nums" style="margin-bottom:6px">'+pills+'</div>'      +'<div class="rota-hora">'+meta+'</div>'+acoes+'</div>';
   }).join('');
 }
@@ -1090,17 +1092,26 @@ function fbRenderAguardando(){
   var div=document.getElementById('rotas-aguardando');
   var badge=document.getElementById('aguard-badge');
   var entries=Object.entries(_aguardandoLocal);
+  window._fbAguardKeys=Object.keys(_aguardandoLocal);
   var nb=document.getElementById('notif-rotas');
   if(badge)badge.innerHTML=entries.length?'<span class="notif-badge">'+entries.length+'</span>':'';
   if(nb){nb.textContent=entries.length||'';nb.classList.toggle('show',entries.length>0);}
   if(!entries.length){div.innerHTML='<div style="text-align:center;color:var(--muted);padding:12px">Nenhuma aguardando</div>';return;}
-  div.innerHTML=entries.map(function(e){
-    var id=e[0],r=e[1];
-    var pills=(r.numeros||[]).map(function(n){return '<span class="rota-num">'+fbEsc(n)+'</span>';}).join('');
-    return '<div class="aguard-card">'      +'<div style="display:flex;justify-content:space-between;align-items:center;margin-bottom:6px">'      +'<div class="rota-label">'+fbEsc(r.label)+'</div>'      +'<span style="font-size:11px;background:rgba(52,152,219,.15);color:var(--blue);padding:2px 8px;border-radius:20px">Saiu '+r.horaSaiu+'</span></div>'      +'<div class="rota-nums" style="margin-bottom:6px">'+pills+'</div>'      +'<div class="rota-hora" style="margin-bottom:10px">Enviada às '+r.hora+'</div>'      +'<button class="btn btn-a" style="width:100%" onclick="fbLiberarRota(''+id+'')">✓ Liberar para entrega</button></div>';
-  }).join('');
+  var html='';
+  entries.forEach(function(e,idx){
+    var r=e[1];
+    var pills='';
+    (r.numeros||[]).forEach(function(n){pills+='<span class="rota-num">'+fbEsc(n)+'</span>';});
+    html+='<div class="aguard-card">';
+    html+='<div style="display:flex;justify-content:space-between;align-items:center;margin-bottom:6px">';
+    html+='<div class="rota-label">'+fbEsc(r.label)+'</div>';
+    html+='<span style="font-size:11px;background:rgba(52,152,219,.15);color:var(--blue);padding:2px 8px;border-radius:20px">Saiu '+r.horaSaiu+'</span></div>';
+    html+='<div class="rota-nums" style="margin-bottom:6px">'+pills+'</div>';
+    html+='<div class="rota-hora" style="margin-bottom:10px">Enviada às '+r.hora+'</div>';
+    html+='<button class="btn btn-a" style="width:100%" onclick="fbLiberarRota('+idx+',this)">✓ Liberar para entrega</button></div>';
+  });
+  div.innerHTML=html;
 }
-
 function fbRenderHistorico(){
   var div=document.getElementById('rotas-historico');
   var entries=Object.entries(_historicoLocal);
@@ -1146,17 +1157,19 @@ window.fbCriarRota=function(){
   });
 };
 
-window.fbIniciarEdicao=function(id){_editandoId=id;fbRenderRotas();};
+window.fbIniciarEdicao=function(idx){_editandoId=window._fbRotaKeys[idx];fbRenderRotas();};
 window.fbCancelarEdicao=function(){_editandoId=null;fbRenderRotas();};
 
-window.fbSalvarEdicao=function(id){
-  var inp=document.getElementById('edit-inp-'+id);
+window.fbSalvarEdicao=function(){
+  var id=_editandoId;
+  if(!id)return;
+  var inp=document.getElementById('edit-inp');
   if(!inp)return;
   var nums=fbParseNums(inp.value);
   if(!nums.length)return;
   var ativos=fbTodosNumerosAtivos(id);
   var conflitos=nums.filter(function(n){return ativos.some(function(a){return a.num===n;});});
-  var ewarn=document.getElementById('edit-warn-'+id);
+  var ewarn=document.getElementById('edit-warn');
   if(conflitos.length>0){
     if(ewarn)ewarn.textContent='⚠ '+conflitos.join(', ')+' já em outra rota';
     return;
@@ -1168,8 +1181,8 @@ window.fbSalvarEdicao=function(id){
   });
 };
 
-window.fbLiberarRota=function(id){
-  var btn=event.target;
+window.fbLiberarRota=function(idx,btn){
+  var id=window._fbAguardKeys[idx];
   btn.disabled=true;btn.textContent='liberando...';
   fbRead('/aguardando/'+id).then(function(r){
     if(!r)return;
