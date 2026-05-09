@@ -824,6 +824,15 @@ function filtC(t,btn){
     if(r) r.classList.toggle('hid',CF.length>0&&CF.indexOf(pg)===-1);
   });upC();
 }
+function mostrarToast(msg, tipo) {
+  var t = document.createElement('div');
+  t.style.cssText = 'position:fixed;bottom:24px;right:24px;z-index:9999;padding:14px 18px;border-radius:10px;font-size:13px;font-weight:500;max-width:380px;box-shadow:0 4px 20px rgba(0,0,0,.4);';
+  t.style.background = tipo==='green'?'rgba(46,204,113,.95)':tipo==='yellow'?'rgba(241,196,15,.95)':'rgba(232,69,44,.95)';
+  t.style.color = tipo==='yellow'?'#000':'#fff';
+  t.textContent = msg;
+  document.body.appendChild(t);
+  setTimeout(function(){t.style.opacity='0';t.style.transition='opacity .3s';setTimeout(function(){t.remove();},300);},5000);
+}
 function setTroco(i, val) {
   CS[i].troco = parseFloat(val) || 0;
 }
@@ -1000,18 +1009,30 @@ function exportCSV(){
 
 
 // ── ROTAS FIREBASE ────────────────────────────────────────────
-var fbApp = firebase.initializeApp({
-  apiKey: "AIzaSyBLtSyEOnLgIFEfNbrNk9oryQY9z5TLmsc",
-  authDomain: "pizzaria-rotas.firebaseapp.com",
-  databaseURL: "https://pizzaria-rotas-default-rtdb.firebaseio.com",
-  projectId: "pizzaria-rotas",
-  storageBucket: "pizzaria-rotas.firebasestorage.app",
-  messagingSenderId: "581001630049",
-  appId: "1:581001630049:web:08c174cdc8b04b6d453520"
-});
-var db = firebase.database();
-var rotasListeners = [];
+var db = null;
 var aguardandoAnterior = 0;
+var fbIniciado = false;
+
+function iniciarFirebase() {
+  if (fbIniciado) return true;
+  try {
+    firebase.initializeApp({
+      apiKey: "AIzaSyBLtSyEOnLgIFEfNbrNk9oryQY9z5TLmsc",
+      authDomain: "pizzaria-rotas.firebaseapp.com",
+      databaseURL: "https://pizzaria-rotas-default-rtdb.firebaseio.com",
+      projectId: "pizzaria-rotas",
+      storageBucket: "pizzaria-rotas.firebasestorage.app",
+      messagingSenderId: "581001630049",
+      appId: "1:581001630049:web:08c174cdc8b04b6d453520"
+    });
+    db = firebase.database();
+    fbIniciado = true;
+    return true;
+  } catch(e) {
+    console.log('[Firebase] erro init:', e.message);
+    return false;
+  }
+}
 
 function horaAtualBrasil() {
   var d = new Date(); d.setHours(d.getHours()-3);
@@ -1020,6 +1041,10 @@ function horaAtualBrasil() {
 
 // ── listeners em tempo real ───────────────────────────────────
 function iniciarListenersRotas() {
+  if (!iniciarFirebase()) {
+    document.getElementById('rotas-ativas').innerHTML='<div style="color:#ff6b4a;padding:12px">⚠ Firebase não disponível. Verifique a conexão.</div>';
+    return;
+  }
   db.ref('rotas').on('value', function(snap) {
     renderRotasAtivas(snap.val() || {});
   });
@@ -1033,6 +1058,7 @@ function iniciarListenersRotas() {
 
 // ── validação duplicatas ──────────────────────────────────────
 function validarDuplicatasInput() {
+  if (!iniciarFirebase()) return;
   var nums = getNums();
   if (!nums.length) { document.getElementById('rotas-feedback').innerHTML=''; return; }
   db.ref('rotas').get().then(function(snap) {
@@ -1054,6 +1080,7 @@ function getNums() {
 
 // ── criar rota ────────────────────────────────────────────────
 function criarRota() {
+  if (!iniciarFirebase()) { mostrarToast('⚠ Firebase não disponível', 'red'); return; }
   var nums = getNums();
   if (!nums.length) {
     document.getElementById('rotas-feedback').innerHTML='<span style="color:#ff6b4a">⚠ Selecione ao menos um pedido</span>';
