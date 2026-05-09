@@ -501,84 +501,124 @@ function mudarData(data){
 }
 function voltarHoje(){document.getElementById('filtro-data').value=hojeStr();mudarData(hojeStr());}
 
+function extrairTroco(notes){
+  if(!notes)return 0;
+  var m=notes.match(/para R\\$\s*([\d.,]+)/);
+  if(!m)return 0;
+  return parseFloat(m[1].replace(',','.')) || 0;
+}
+
+function pgtoFromCW(payments){
+  if(!payments||!payments[0])return 'online';
+  var pt=payments[0].payment_type,pm=payments[0].payment_method;
+  if(pt==='offline'){return pm==='credit_card'||pm==='debit_card'?'card':pm==='pix'?'pix':'money';}
+  return 'online';
+}
+
 function processar(foodyArr,cwArr,data){
   var novos=[];
-  var cwMatchados=[];
+  var cwUsados={};
+
+  // 1. Pedidos da Foody (entrega própria)
   foodyArr.forEach(function(p){
     var dt=p.date||p.creationDate||'';
     var hora=dt.length>=16?dt.substring(11,16):'';
     var canal='catalog',cwId=null;
     for(var i=0;i<cwArr.length;i++){
-      try{var diff=Math.abs(new Date(cwArr[i].created_at)-new Date(dt))/1000;if(diff<90){canal=cwArr[i].sales_channel||'ifood';cwId=cwArr[i].id;cwMatchados.push(cwArr[i].id);break;}}catch(e){}
+      try{var diff=Math.abs(new Date(cwArr[i].created_at)-new Date(dt))/1000;if(diff<90){canal=cwArr[i].sales_channel||'catalog';cwId=cwArr[i].id;cwUsados[cwId]=true;break;}}catch(e){}
     }
     var isCancelled=['cancelled','canceled'].indexOf(p.status)!==-1;
-    novos.push({
+    var troco=extrairTroco(p.notes||'');
+    var obj={
       id:String(p.id),idNum:parseInt(p.id)||0,hora:hora,horaEntrega:null,
-      status:p.status,isCancelled:isCancelled,
+      status:p.status,isCancelled:isCancelled,fonte:'foody',
       dFee:+p.deliveryFee||0,pgto:PGTO_MAP[p.paymentMethod]||'online',
       cFee:+p.courierFee||0,tot:+p.orderTotal||0,
       courier:(p.courier&&p.courier.courierName)||'Desconhecido',
       client:(p.customer&&p.customer.customerName)||'—',
       item:p.orderDetails?p.orderDetails.split('\n')[0]:'—',
-      canal:canal,cwId:cwId,
-      deliveredBy:canal!=='ifood'?'foody_delivery':null,
-      descIfood:0,descLoja:0,comissao:0,taxaPgto:0,repasse:null,troco:0
-    });
+      canal:canal,cwId:cwId,orderType:'delivery',
+      deliveredBy:'foody_delivery',
+      descIfood:0,descLoja:0,comissao:0,taxaPgto:0,repasse:null,troco:troco
+    };
+    if(cwId&&cwDetalhes[cwId])aplicarDetalhesCW(obj,cwDetalhes[cwId]);
+    novos.push(obj);
   });
-  // Pedidos CW exclusivos (retirada / iFood sem motoboy próprio)
-  cwArr.forEach(function(cw){
-    if(cwMatchados.indexOf(cw.id)!==-1)return;
-    var isCancelled=['cancelled','canceled'].indexOf(cw.status)!==-1;
-    var isTakeout=cw.order_type==='takeout';
-    var courier=isTakeout?'Retirada':(cw.delivered_by==='ifood'?'iFood':'Desconhecido');
-    novos.push({
-      id:String(cw.display_id||cw.id),idNum:cw.display_id||0,
-      hora:(cw.created_at||'').substring(11,16),horaEntrega:null,
-      status:cw.status,isCancelled:isCancelled,
-      dFee:+cw.delivery_fee||0,pgto:'online',
-      cFee:0,tot:+cw.total||0,
-      courier:courier,
-      client:(cw.customer&&cw.customer.name)||'—',
-      canal:cw.sales_channel||'catalog',
-      cwId:cw.id,
-      deliveredBy:cw.delivered_by||null,
-      descIfood:0,descLoja:0,comissao:0,taxaPgto:0,repasse:null,troco:0
-    });
+
+  // 2. Pedidos CW exclusivos (retirada e entrega iFood)
+  cwArr.forEach(function(c){
+    if(cwUsados[c.id])return;
+    var isIfoodDel=c.delivered_by==='ifood';
+    var isTakeout=c.order_type==='takeout';
+    if(!isIfoodDel&&!isTakeout)return;
+    var hora=c.created_at?c.created_at.substring(11,16):'';
+    var isCancelled=['cancelled','canceled'].indexOf(c.status)!==-1;
+    var canal=c.sales_channel||'catalog';
+    var det=cwDetalhes[c.id]||null;
+    var pgto='online',tot=0,dFee=0,troco=0;
+    if(det){
+      tot=+det.total||0;
+      dFee=+det.delivery_fee||0;
+      pgto=pgtoFromCW(det.payments);
+      if(det.payments&&det.payments[0]&&det.payments[0].change_for>0)
+        troco=parseFloat(det.payments[0].change_for);
+    }
+    var obj={
+      id:String(c.display_id||c.id),idNum:c.display_id||c.id,hora:hora,horaEntrega:null,
+      status:c.status,isCancelled:isCancelled,fonte:'cw',
+      dFee:dFee,pgto:pgto,cFee:0,tot:tot,
+      courier:isTakeout?'Retirada':'iFood Entrega',
+      client:(c.customer&&c.customer.name)||'—',
+      item:'',canal:canal,cwId:c.id,orderType:c.order_type,
+      deliveredBy:c.delivered_by||null,
+      descIfood:0,descLoja:0,comissao:0,taxaPgto:0,repasse:null,troco:troco
+    };
+    if(det)aplicarDetalhesCW(obj,det);
+    novos.push(obj);
   });
+
   novos.sort(function(a,b){return a.idNum-b.idNum;});
-  novos.forEach(function(p){
-    CS.forEach(function(old){if(old.id===p.id&&old.troco>0)p.troco=old.troco;});
-    if(p.cwId&&cwDetalhes[p.cwId])aplicarDetalhes(p,cwDetalhes[p.cwId]);
-  });
+
+  // preservar conf e troco anteriores
+  var confMap={},trocoMap={};
+  CS.forEach(function(p){if(p.conf)confMap[p.id]=true;if(p.troco>0)trocoMap[p.id]=p.troco;});
+  novos.forEach(function(p){if(trocoMap[p.id]&&!p.troco)p.troco=trocoMap[p.id];});
+
   PD=novos;
-  var confMap={};
-  CS.forEach(function(p){if(p.conf)confMap[p.id]=true;});
+  var confMap2={};CS.forEach(function(p){if(p.conf)confMap2[p.id]=true;});
   CS=PD.filter(function(p){return p.pgto!=='online'&&!p.isCancelled;}).map(function(p){
-    return Object.assign({},p,{conf:!!confMap[p.id]||(p.pgto==='pix'),pgtoE:null});
+    return Object.assign({},p,{conf:!!confMap2[p.id]||(p.pgto==='pix'),pgtoE:null});
   });
   render();
 }
 
-function aplicarDetalhes(p,det){
+function aplicarDetalhesCW(p,det){
   if(!det)return;
   var descIfood=0,descLoja=0;
   var isIfoodCh=p.canal==='ifood';
+  var isTakeout=p.orderType==='takeout';
   if(!p.isCancelled){
     (det.discounts||[]).forEach(function(d){
       if(d.sponsorship==='ifood')descIfood+=d.total||0;
       else if(d.sponsorship==='merchant')descLoja+=d.total||0;
     });
   }
-  var isEntregaIfood=det.delivered_by&&det.delivered_by!=='foody_delivery';
+  var isEntregaIfood=det.delivered_by==='ifood';
   var isPgtoOnline=(det.payments||[]).some(function(pg){return pg.payment_type==='online';});
   var baseComissao=p.tot+descIfood;
-  var comissao=(isIfoodCh&&!p.isCancelled)?baseComissao*(isEntregaIfood?COMISSAO_IFOOD:COMISSAO_PROPRIA):0;
-  var taxaPgto=(isIfoodCh&&!p.isCancelled&&isPgtoOnline)?baseComissao*TAXA_PGTO_ONLINE:0;
-  p.deliveredBy=p.isCancelled?null:(det.delivered_by||'foody_delivery');
+  var comissao=(isIfoodCh&&!p.isCancelled&&!isTakeout)?baseComissao*(isEntregaIfood?COMISSAO_IFOOD:COMISSAO_PROPRIA):0;
+  var taxaPgto=(isIfoodCh&&!p.isCancelled&&!isTakeout&&isPgtoOnline)?baseComissao*TAXA_PGTO_ONLINE:0;
+  p.deliveredBy=p.isCancelled?null:(det.delivered_by||p.deliveredBy||'foody_delivery');
   p.descIfood=descIfood;p.descLoja=descLoja;
   p.comissao=comissao;p.taxaPgto=taxaPgto;
-  p.repasse=p.isCancelled?null:(isIfoodCh?baseComissao-comissao-taxaPgto:null);
+  p.repasse=(!p.isCancelled&&isIfoodCh&&!isTakeout)?baseComissao-comissao-taxaPgto:null;
   if(!p.isCancelled&&det.updated_at)p.horaEntrega=det.updated_at.substring(11,16);
+  // troco via CW
+  if(!p.isCancelled&&p.pgto==='money'&&!p.troco){
+    (det.payments||[]).forEach(function(pg){
+      if(pg.change_for&&pg.change_for>0)p.troco=parseFloat(pg.change_for);
+    });
+  }
   if(!p.isCancelled&&p.pgto==='money'){
     (det.payments||[]).forEach(function(pg){
       if(pg.change_for&&pg.change_for>0)p.troco=Math.max(0,parseFloat(pg.change_for)-p.tot);
@@ -599,8 +639,20 @@ function buscarDetalhes(cwArr){
       return fetch('/api/cardapio/detalhes?ids='+id).then(function(r){return r.json();}).then(function(res){
         if(res.ok&&res.pedidos&&res.pedidos[0]){
           var det=res.pedidos[0];cwDetalhes[id]=det;
-          PD.forEach(function(p){if(p.cwId==id)aplicarDetalhes(p,det);});
-          CS.forEach(function(p){if(p.cwId==id)aplicarDetalhes(p,det);});
+          PD.forEach(function(p){
+            if(p.cwId==id){
+              if(p.fonte==='cw'){
+                // atualizar tot e pgto que vieram vazios
+                if(!p.tot){p.tot=+det.total||0;p.dFee=+det.delivery_fee||0;}
+                if(p.pgto==='online'&&det.payments)p.pgto=pgtoFromCW(det.payments);
+              }
+              aplicarDetalhesCW(p,det);
+            }
+          });
+          var confMap={};CS.forEach(function(p){if(p.conf)confMap[p.id]=true;});
+          CS=PD.filter(function(p){return p.pgto!=='online'&&!p.isCancelled;}).map(function(p){
+            return Object.assign({},p,{conf:!!confMap[p.id]||(p.pgto==='pix'),pgtoE:null});
+          });
         }
         buscados++;
         document.getElementById('det-prog').textContent=buscados+'/'+total;
