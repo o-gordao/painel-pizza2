@@ -8,36 +8,44 @@
 <script src="https://cdnjs.cloudflare.com/ajax/libs/Chart.js/4.4.1/chart.umd.js"></script>
 
 <style>
-:root{--bg:#0f0f0f;--bg2:#181818;--bg3:#222;--border:#2a2a2a;--border2:#333;--text:#f0f0f0;--muted:#888;--accent:#e8452c;--green:#2ecc71;--yellow:#f1c40f;--blue:#3498db;--purple:#9b59b6}
-body.light{--bg:#f5f5f5;--bg2:#ffffff;--bg3:#f0f0f0;--border:#e0e0e0;--border2:#d0d0d0;--text:#1a1a1a;--muted:#666;--green:#1a9e50;--blue:#2271b3;--purple:#7b44a3}
+:root{--bg:#0f0f0f;--bg2:#181818;--bg3:#222;--border:#2a2a2a;--border2:#333;--text:#f0f0f0;--muted:#888;--accent:#e8452c;--green:#2ecc71;--yellow:#f1c40f;--blue:#3498db;--purple:#9b59b6;--sidebar-w:220px}
+body.light{--bg:#f0f0f0;--bg2:#ffffff;--bg3:#e8e8e8;--border:#e0e0e0;--border2:#d0d0d0;--text:#1a1a1a;--muted:#666;--green:#1a9e50;--blue:#2271b3;--purple:#7b44a3}
 *{box-sizing:border-box;margin:0;padding:0}
-body{font-family:'DM Sans',sans-serif;background:var(--bg);color:var(--text);font-size:14px}
-.hdr{background:var(--bg2);border-bottom:1px solid var(--border);padding:16px 24px;display:flex;align-items:center;justify-content:space-between;position:sticky;top:0;z-index:100;flex-wrap:wrap;gap:8px}
-.logo{display:flex;align-items:center;gap:10px}
-.logo-icon{width:34px;height:34px;background:var(--accent);border-radius:8px;display:flex;align-items:center;justify-content:center;font-size:17px}
-.logo-text{font-size:15px;font-weight:600}.logo-sub{font-size:11px;color:var(--muted);font-family:'DM Mono',monospace}
-.hdr-right{display:flex;gap:8px;align-items:center;flex-wrap:wrap}
-.badge{font-size:11px;padding:3px 9px;border-radius:20px}
+body{font-family:'DM Sans',sans-serif;background:var(--bg);color:var(--text);font-size:14px;display:flex;min-height:100vh}
+.sidebar{width:var(--sidebar-w);min-height:100vh;background:var(--bg2);border-right:1px solid var(--border);display:flex;flex-direction:column;position:fixed;top:0;left:0;z-index:200}
+.sb-logo{padding:16px 14px 12px;border-bottom:1px solid var(--border);display:flex;align-items:center;gap:10px;flex-shrink:0}
+.logo-icon{width:32px;height:32px;background:var(--accent);border-radius:8px;display:flex;align-items:center;justify-content:center;font-size:16px;flex-shrink:0}
+.logo-text{font-size:13px;font-weight:600;line-height:1.2;white-space:nowrap;overflow:hidden}
+.logo-sub{font-size:10px;color:var(--muted);font-family:'DM Mono',monospace;white-space:nowrap;overflow:hidden}
+.sb-status{padding:10px 14px;border-bottom:1px solid var(--border);display:flex;flex-direction:column;gap:4px}
+.badge{font-size:10px;padding:3px 8px;border-radius:20px;display:inline-flex;align-items:center;gap:4px;width:fit-content}
 .bg{background:rgba(46,204,113,.15);color:var(--green);border:1px solid rgba(46,204,113,.3)}
 .br{background:rgba(232,69,44,.15);color:#ff6b4a;border:1px solid rgba(232,69,44,.3)}
 .by{background:rgba(241,196,15,.15);color:var(--yellow);border:1px solid rgba(241,196,15,.3)}
+.sb-nav{flex:1;padding:6px 0;overflow-y:auto}
+.tab{width:100%;padding:10px 16px;cursor:pointer;font-size:13px;color:var(--muted);background:none;border:none;font-family:'DM Sans',sans-serif;display:flex;align-items:center;gap:10px;transition:all .15s;text-align:left;border-left:3px solid transparent;white-space:nowrap}
+.tab:hover{background:rgba(255,255,255,.05);color:var(--text)}
+.tab.on{color:var(--text);background:rgba(232,69,44,.08);border-left-color:var(--accent)}
+.tab-icon{font-size:15px;width:20px;text-align:center;flex-shrink:0}
+.tab-badge{margin-left:auto;background:var(--accent);color:#fff;border-radius:10px;padding:1px 6px;font-size:10px;font-weight:600;display:none}
+.tab-badge.show{display:inline-block}
+.sb-bottom{padding:10px 14px;border-top:1px solid var(--border);display:flex;flex-direction:column;gap:6px}
+.sb-cd{font-size:11px;color:var(--muted);font-family:'DM Mono',monospace;text-align:center;padding:2px}
+.layout{margin-left:var(--sidebar-w);flex:1;display:flex;flex-direction:column;min-height:100vh;min-width:0}
+.topbar{background:var(--bg2);border-bottom:1px solid var(--border);padding:10px 20px;display:flex;align-items:center;justify-content:space-between;flex-wrap:wrap;gap:8px;position:sticky;top:0;z-index:100}
+.tb-info{font-size:12px;color:var(--muted)}.tb-info strong{color:var(--text)}
+.date-input{background:var(--bg3);border:1px solid var(--border2);color:var(--text);padding:5px 10px;border-radius:6px;font-size:12px;font-family:'DM Mono',monospace;outline:none}
+.main{padding:20px;flex:1}
 .btn{padding:7px 13px;border-radius:6px;border:1px solid var(--border2);background:var(--bg3);color:var(--text);cursor:pointer;font-size:12px;font-family:'DM Sans',sans-serif;display:inline-flex;align-items:center;gap:5px;transition:background .15s}
-.btn:hover{background:#2a2a2a}.btn:disabled{opacity:.4;cursor:not-allowed}
+.btn:hover{background:var(--border2)}.btn:disabled{opacity:.4;cursor:not-allowed}
 .btn-a{background:var(--accent);border-color:var(--accent);color:#fff}.btn-a:hover{background:#ff6b4a}
 .spin{display:inline-block;width:11px;height:11px;border:2px solid rgba(255,255,255,.3);border-top-color:#fff;border-radius:50%;animation:sp .7s linear infinite}
 @keyframes sp{to{transform:rotate(360deg)}}
-.main{padding:24px;max-width:1400px;margin:0 auto}
-.topbar{display:flex;align-items:center;justify-content:space-between;background:var(--bg2);border:1px solid var(--border);border-radius:8px;padding:10px 16px;margin-bottom:16px;flex-wrap:wrap;gap:8px}
-.tb-info{font-size:12px;color:var(--muted)}.tb-info strong{color:var(--text)}
-.date-input{background:var(--bg3);border:1px solid var(--border2);color:var(--text);padding:5px 10px;border-radius:6px;font-size:12px;font-family:'DM Mono',monospace;outline:none}
 .metrics{display:grid;grid-template-columns:repeat(6,1fr);gap:10px;margin-bottom:20px}
 .metric{background:var(--bg2);border:1px solid var(--border);border-radius:10px;padding:14px}
 .ml{font-size:11px;color:var(--muted);margin-bottom:5px}.mv{font-size:21px;font-weight:600}
 .ms{font-size:11px;color:var(--muted);margin-top:2px;font-family:'DM Mono',monospace}
 .ma{border-color:rgba(232,69,44,.4)}.ma .mv{color:#ff6b4a}
-.tabs{display:flex;border-bottom:1px solid var(--border);margin-bottom:20px;overflow-x:auto}
-.tab{padding:9px 16px;cursor:pointer;font-size:13px;color:var(--muted);border-bottom:2px solid transparent;background:none;border-top:none;border-left:none;border-right:none;font-family:'DM Sans',sans-serif;white-space:nowrap;transition:all .15s}
-.tab.on{color:var(--text);border-bottom-color:var(--accent)}
 .panel{display:none}.panel.on{display:block}
 .cg{display:grid;grid-template-columns:repeat(3,1fr);gap:12px}
 .cc{background:var(--bg2);border:1px solid var(--border);border-radius:12px;padding:16px}
@@ -45,10 +53,11 @@ body{font-family:'DM Sans',sans-serif;background:var(--bg);color:var(--text);fon
 .av{width:38px;height:38px;border-radius:50%;display:flex;align-items:center;justify-content:center;font-size:13px;font-weight:600;color:#fff;flex-shrink:0}
 .cn{font-size:13px;font-weight:500}.co{font-size:11px;color:var(--muted);font-family:'DM Mono',monospace}
 .cs2{display:grid;grid-template-columns:1fr 1fr;gap:8px}
-.sb{background:var(--bg3);border-radius:6px;padding:9px 11px}
+.sb2{background:var(--bg3);border-radius:6px;padding:9px 11px}
 .sl{font-size:10px;color:var(--muted);margin-bottom:2px;text-transform:uppercase;letter-spacing:.5px}
 .sv{font-size:14px;font-weight:600;font-family:'DM Mono',monospace}
 .sv.g{color:var(--green)}.sv.y{color:var(--yellow)}.sv.b{color:var(--blue)}
+.sb{background:var(--bg3);border-radius:6px;padding:9px 11px}
 .fb{margin-top:9px}.fbl{display:flex;justify-content:space-between;font-size:10px;color:var(--muted);margin-bottom:2px}
 .fbt{background:var(--bg3);border-radius:3px;height:4px}.fbf{height:4px;border-radius:3px}
 .tw{background:var(--bg2);border:1px solid var(--border);border-radius:12px;overflow:hidden}
@@ -85,13 +94,12 @@ hr.d{border:none;border-top:1px solid var(--border);margin:5px 0}
 .fb2.on{background:var(--accent);border-color:var(--accent);color:#fff}
 .fb2:hover:not(.on){border-color:#555;color:var(--text)}
 .bp{padding:7px 14px;border-radius:8px;border:1px solid var(--border2);background:var(--bg3);color:var(--text);cursor:pointer;font-size:13px;font-family:'DM Sans',sans-serif;display:flex;align-items:center;gap:7px}
-.bp:hover{background:#2a2a2a}
+.bp:hover{background:var(--border2)}
 .bc{background:var(--accent);color:#fff;border-radius:20px;padding:2px 7px;font-size:11px;font-weight:600}
 .cst{display:flex;gap:16px;padding:9px 16px;border-bottom:1px solid var(--border);background:var(--bg3);flex-wrap:wrap}
 .css{font-size:12px;color:var(--muted)}.css strong{color:var(--text);font-family:'DM Mono',monospace}
 .chk{width:19px;height:19px;border-radius:4px;border:2px solid var(--border2);background:var(--bg3);cursor:pointer;appearance:none;transition:all .15s;display:block;margin:0 auto;position:relative}
 .chk:checked{background:var(--green);border-color:var(--green)}
-.chk:checked::after{content:'checkmark';color:#fff;font-size:11px;position:absolute;top:50%;left:50%;transform:translate(-50%,-50%)}
 .okr td{background:rgba(46,204,113,.07)!important}.okr:hover td{background:rgba(46,204,113,.12)!important}
 .ppill{font-size:11px;padding:3px 7px;border-radius:20px;display:inline-flex;align-items:center}
 .ppo{background:rgba(52,152,219,.15);color:#3498db;border:1px solid rgba(52,152,219,.3)}
@@ -116,7 +124,6 @@ hr.d{border:none;border-top:1px solid var(--border);margin:5px 0}
 .ifood-bar-txt{font-size:12px;color:var(--muted);flex:1}
 .ifood-prog-track{background:var(--bg3);border-radius:4px;height:6px;margin-top:4px;flex:1;min-width:200px}
 .ifood-prog-fill{height:6px;border-radius:4px;background:var(--accent);transition:width .5s}
-/* ROTAS */
 .rota-card{background:var(--bg3);border:1px solid var(--border);border-radius:10px;padding:16px;margin-bottom:10px}
 .rota-card.alt{border-color:rgba(230,126,34,.6);animation:palo 2s infinite}
 @keyframes palo{0%,100%{border-color:rgba(230,126,34,.4)}50%{border-color:rgba(230,126,34,1)}}
@@ -126,63 +133,75 @@ hr.d{border:none;border-top:1px solid var(--border);margin:5px 0}
 .nbadge{background:var(--accent);color:#fff;border-radius:50%;width:18px;height:18px;font-size:10px;font-weight:700;display:inline-flex;align-items:center;justify-content:center;margin-left:6px}
 .rota-input{background:var(--bg2);border:1px solid var(--border2);color:var(--text);padding:8px 12px;border-radius:6px;font-size:13px;font-family:'DM Mono',monospace;outline:none;width:100%;margin-bottom:8px}
 .rota-input:focus{border-color:var(--accent)}
+.rota-label{font-size:13px;font-weight:600;margin-bottom:6px}
+.rota-hora{font-size:11px;color:var(--muted);margin-top:4px}
+.rota-nums{display:flex;flex-wrap:wrap;gap:4px;margin-bottom:8px}
+.rota-edit-input{background:var(--bg2);border:1px solid var(--border2);color:var(--text);padding:6px 10px;border-radius:6px;font-size:13px;font-family:'DM Mono',monospace;outline:none;width:100%;margin-bottom:6px}
+.rota-edit-input:focus{border-color:var(--accent)}
+.notif-badge{background:var(--accent);color:#fff;border-radius:50%;width:16px;height:16px;font-size:10px;font-weight:700;display:inline-flex;align-items:center;justify-content:center}
+@media(max-width:768px){:root{--sidebar-w:56px}.logo-text,.logo-sub,.sb-status,.sb-cd,.tab-label{display:none}.tab{padding:10px 0;justify-content:center}.sb-logo{justify-content:center;padding:12px 8px}}
 </style>
 </head>
 <body>
-
 <div id="loader" class="loader">
   <div style="font-size:36px">🍕</div>
   <div style="font-size:15px"><span class="spin"></span> Carregando dados...</div>
   <div style="font-size:12px;color:var(--muted)">Conectando às APIs</div>
 </div>
 
-<div class="hdr">
-  <div class="logo">
+<!-- SIDEBAR -->
+<nav class="sidebar">
+  <div class="sb-logo">
     <div class="logo-icon">🍕</div>
-    <div>
-      <div class="logo-text">Disck Pizza Hollywood</div>
+    <div style="overflow:hidden">
+      <div class="logo-text">Pizza Hollywood</div>
       <div class="logo-sub" id="logo-sub">fechamento de caixa</div>
     </div>
   </div>
-  <div class="hdr-right">
+  <div class="sb-status">
     <span class="badge bg">● foody delivery</span>
     <span class="badge br">● cardápio web</span>
     <span class="badge by" id="badge-att">carregando</span>
-    <button class="btn" id="btn-tema" onclick="toggleTema()" style="font-size:15px;padding:5px 10px" title="alternar tema">🌙</button>
-    <button class="btn" id="btn-ref" onclick="carregar()">🔄 atualizar</button>
-    <button class="btn" onclick="exportCSV()">⬇ CSV</button>
-    <button class="btn btn-a" onclick="window.print()">🖨 imprimir</button>
   </div>
-</div>
+  <div class="sb-nav">
+    <button class="tab on" onclick="T('entregadores',this)"><span class="tab-icon">👤</span><span class="tab-label">por entregador</span></button>
+    <button class="tab" onclick="T('pedidos',this)"><span class="tab-icon">📋</span><span class="tab-label">pedidos detalhados</span></button>
+    <button class="tab" onclick="T('graficos',this)"><span class="tab-icon">📊</span><span class="tab-label">gráficos</span></button>
+    <button class="tab" onclick="T('fechamento',this)"><span class="tab-icon">💰</span><span class="tab-label">fechamento final</span></button>
+    <button class="tab" onclick="T('conferencia',this)"><span class="tab-icon">✅</span><span class="tab-label">conferência <span class="tab-badge" id="notif-conf">0</span></span></button>
+    <button class="tab" onclick="T('historico',this);carregarHistorico()"><span class="tab-icon">📅</span><span class="tab-label">histórico</span></button>
+    <button class="tab" onclick="T('rotas',this)"><span class="tab-icon">🛵</span><span class="tab-label">rotas <span class="tab-badge" id="notif-rotas"></span></span></button>
+  </div>
+  <div class="sb-bottom">
+    <div class="sb-cd" id="cd-sb">atualiza em <strong><span id="cd">60</span>s</strong></div>
+    <button class="btn" id="btn-ref" onclick="carregar()" style="width:100%;justify-content:center">🔄 atualizar</button>
+    <button class="btn" id="btn-tema" onclick="toggleTema()" style="width:100%;justify-content:center">🌙 tema</button>
+  </div>
+</nav>
 
-<div class="main">
+<!-- LAYOUT PRINCIPAL -->
+<div class="layout">
   <div class="topbar">
-    <div class="tb-info">Próxima atualização em <strong><span id="cd">60</span>s</strong></div>
+    <div class="tb-info" id="tb-status">aguardando...</div>
     <div style="display:flex;align-items:center;gap:8px">
       <input type="date" id="filtro-data" class="date-input" onchange="mudarData(this.value)">
       <button class="btn" id="btn-hoje" style="display:none" onclick="voltarHoje()">← hoje</button>
     </div>
-    <div class="tb-info" id="tb-status">aguardando...</div>
+    <div style="display:flex;gap:6px">
+      <button class="btn" onclick="exportCSV()">⬇ CSV</button>
+      <button class="btn btn-a" onclick="window.print()">🖨 imprimir</button>
+    </div>
   </div>
 
-  <div class="ifood-bar hid" id="ifood-bar">
-    <div class="ifood-bar-txt">🔄 Buscando detalhes iFood: <strong id="det-prog">0/0</strong></div>
-    <div class="ifood-prog-track"><div class="ifood-prog-fill" id="det-fill" style="width:0%"></div></div>
-  </div>
+  <div class="main">
+    <div class="ifood-bar hid" id="ifood-bar">
+      <div class="ifood-bar-txt">🔄 Buscando detalhes iFood: <strong id="det-prog">0/0</strong></div>
+      <div class="ifood-prog-track"><div class="ifood-prog-fill" id="det-fill" style="width:0%"></div></div>
+    </div>
 
-  <div class="metrics" id="mbox"></div>
+    <div class="metrics" id="mbox"></div>
 
-  <div class="tabs">
-    <button class="tab on" onclick="T('entregadores',this)">por entregador</button>
-    <button class="tab" onclick="T('pedidos',this)">pedidos detalhados</button>
-    <button class="tab" onclick="T('graficos',this)">gráficos</button>
-    <button class="tab" onclick="T('fechamento',this)">fechamento final</button>
-    <button class="tab" onclick="T('conferencia',this)">✓ conferência</button>
-    <button class="tab" onclick="T('historico',this)">📅 histórico</button>
-    <button class="tab" onclick="T('rotas',this)">🛵 rotas</button>
-  </div>
-
-  <div id="panel-entregadores" class="panel on"><div class="cg" id="cgrid"></div></div>
+<div id="panel-entregadores" class="panel on"><div class="cg" id="cgrid"></div></div>
 
   <div id="panel-pedidos" class="panel">
     <div class="tw">
@@ -357,6 +376,10 @@ hr.d{border:none;border-top:1px solid var(--border);margin:5px 0}
   </div>
 </div>
 
+
+  </div>
+</div>
+
 <!-- MODAL PENDÊNCIAS -->
 <div class="modal hid" id="mpend" onclick="if(event.target===this)closeM()">
   <div class="mb">
@@ -371,6 +394,7 @@ hr.d{border:none;border-top:1px solid var(--border);margin:5px 0}
     </div>
   </div>
 </div>
+
 
 <script>
 var COMISSAO_PROPRIA=0.11,COMISSAO_IFOOD=0.23,TAXA_PGTO_ONLINE=0.028;
@@ -821,7 +845,9 @@ function upC(){
   document.getElementById('cvl').textContent=R(tv);
   document.getElementById('crec').textContent=R(ov);
   document.getElementById('cpv').textContent=R(pv);
-  document.getElementById('pcnt').textContent=CS.filter(function(p){return !p.conf;}).length;
+  var np=CS.filter(function(p){return !p.conf;}).length;
+  document.getElementById('pcnt').textContent=np;
+  var nb=document.getElementById('notif-conf');if(nb){nb.textContent=np;nb.classList.toggle('show',np>0);}
 }
 
 function openM(){
@@ -1032,6 +1058,7 @@ function renderAguardando(aguard){
   if(entries.length>aguardandoAnterior&&document.getElementById('panel-rotas').classList.contains('on'))mostrarToast('🔔 Nova rota aguardando liberação!','yellow');
   aguardandoAnterior=entries.length;
   badge.innerHTML=entries.length?'<span class="notif-badge">'+entries.length+'</span>':'';
+  var nb2=document.getElementById('notif-rotas');if(nb2){nb2.textContent=entries.length||'';nb2.classList.toggle('show',entries.length>0);}
   if(!entries.length){div.innerHTML='<div style="text-align:center;color:var(--muted);padding:12px">Nenhuma aguardando</div>';return;}
   div.innerHTML=entries.map(function(e){
     var key=e[0],r=e[1],enc=encodeURIComponent(JSON.stringify(r));
