@@ -405,6 +405,7 @@ var COLS=['#e8452c','#3498db','#2ecc71','#f1c40f','#9b59b6','#e67e22','#1abc9c',
 var PGTO_MAP={online:'online',card:'card',money:'money',pix:'pix',e_wallet:'online',on_credit:'card',cash:'money',dinheiro:'money',credit_card:'card',debit_card:'card',credit:'card',debit:'card',voucher:'card',meal_voucher:'card',bank_slip:'pix',bank_transfer:'pix'};
 var DIAS_SEM=['Domingo','Segunda','Terça','Quarta','Quinta','Sexta','Sábado'];
 var PD=[],CS=[],CF=[],charts={},cdVal=60,cdTimer=null,cwDetalhes={},modoHistorico=false;
+var _foodyGlobal=[],_cwGlobal=[],_dataGlobal='';
 
 
 function toggleMetric(btn){
@@ -493,6 +494,7 @@ function carregar(){
     } else if(cRes&&!cRes.erro){
       cwArr=Array.isArray(cRes.orders)?cRes.orders:Array.isArray(cRes)?cRes:[];
     }
+    _foodyGlobal=foodyArr;_cwGlobal=cwArr;_dataGlobal=hoje;
     processar(foodyArr,cwArr,hoje);
     var agora=new Date().toLocaleTimeString('pt-BR',{hour:'2-digit',minute:'2-digit'});
     document.getElementById('badge-att').textContent='✓ '+agora;
@@ -555,16 +557,42 @@ function pgtoFromCW(payments){
 
 function processar(foodyArr,cwArr,data){
   var novos=[];
-  var cwUsados={};
+  var cwMatchados={};
 
-  // 1. Pedidos da Foody (entrega própria)
+  // Monta mapa display_id → cwId a partir dos detalhes já buscados
+  var cwByDisplayId={};
+  Object.keys(cwDetalhes).forEach(function(cwId){
+    var det=cwDetalhes[cwId];
+    if(det&&det.display_id)cwByDisplayId[String(det.display_id)]=cwId;
+  });
+
+  // ETAPA 3: Foody → tenta cruzar por display_id primeiro, fallback timestamp
   foodyArr.forEach(function(p){
     var dt=p.date||p.creationDate||'';
     var hora=dt.length>=16?dt.substring(11,16):'';
     var canal='catalog',cwId=null;
-    for(var i=0;i<cwArr.length;i++){
-      try{var diff=Math.abs(new Date(cwArr[i].created_at)-new Date(dt))/1000;if(diff<90){canal=cwArr[i].sales_channel||'catalog';cwId=cwArr[i].id;cwUsados[cwId]=true;break;}}catch(e){}
+
+    // Cruzamento por display_id (exato)
+    if(cwByDisplayId[String(p.id)]){
+      cwId=cwByDisplayId[String(p.id)];
+      var d=cwDetalhes[cwId];
+      canal=d?(d.sales_channel||'catalog'):'catalog';
+      cwMatchados[cwId]=true;
+    } else {
+      // Fallback: timestamp < 90s
+      for(var i=0;i<cwArr.length;i++){
+        try{
+          var diff=Math.abs(new Date(cwArr[i].created_at)-new Date(dt))/1000;
+          if(diff<90){
+            canal=cwArr[i].sales_channel||'catalog';
+            cwId=cwArr[i].id;
+            cwMatchados[cwId]=true;
+            break;
+          }
+        }catch(e){}
+      }
     }
+
     var isCancelled=['cancelled','canceled'].indexOf(p.status)!==-1;
     var troco=extrairTroco(p.notes||'');
     var obj={
@@ -583,32 +611,42 @@ function processar(foodyArr,cwArr,data){
     novos.push(obj);
   });
 
-  // 2. Pedidos CW exclusivos (retirada e entrega iFood)
+  // ETAPA 4 e 5: CW não cruzado com nenhum Foody → pedido exclusivo CW
   cwArr.forEach(function(c){
-    if(cwUsados[c.id])return;
-    var isIfoodDel=c.delivered_by==='ifood';
-    var isTakeout=c.order_type==='takeout';
-    if(!isIfoodDel&&!isTakeout)return;
-    var hora=c.created_at?c.created_at.substring(11,16):'';
-    var isCancelled=['cancelled','canceled'].indexOf(c.status)!==-1;
-    var canal=c.sales_channel||'catalog';
+    if(cwMatchados[c.id])return;
     var det=cwDetalhes[c.id]||null;
+    var isCancelled=['cancelled','canceled'].indexOf(c.status)!==-1;
+    var hora=c.created_at?c.created_at.substring(11,16):'';
+    // Dados do det se disponível, senão da lista básica
+    var deliveredBy=det?(det.delivered_by||null):(c.delivered_by||null);
+    var orderType=c.order_type||(det?det.order_type:'delivery')||'delivery';
+    var canal=det?(det.sales_channel||c.sales_channel||'catalog'):(c.sales_channel||'catalog');
+    var isTakeout=orderType==='takeout';
+    var isIfoodDel=deliveredBy==='ifood';
+    var isIfoodCh=canal==='ifood';
+    // Dados financeiros do det
     var pgto='online',tot=0,dFee=0,troco=0;
+    var client=(c.customer&&c.customer.name)||'—';
+    var displayId=c.display_id||null;
     if(det){
       tot=+det.total||0;
       dFee=+det.delivery_fee||0;
       pgto=pgtoFromCW(det.payments);
       if(det.payments&&det.payments[0]&&det.payments[0].change_for>0)
         troco=parseFloat(det.payments[0].change_for);
+      if(det.customer&&det.customer.name)client=det.customer.name;
+      if(det.display_id)displayId=det.display_id;
     }
+    var courier=isTakeout?'Retirada':(isIfoodDel?'iFood Entrega':'Desconhecido');
     var obj={
-      id:c.display_id?String(c.display_id):String(c.id).slice(-5),idNum:c.display_id||c.id,hora:hora,horaEntrega:null,
+      id:displayId?String(displayId):(String(c.id).slice(-5)),
+      idNum:displayId||(parseInt(String(c.id).slice(-5))||0),
+      hora:hora,horaEntrega:null,
       status:c.status,isCancelled:isCancelled,fonte:'cw',
       dFee:dFee,pgto:pgto,cFee:0,tot:tot,
-      courier:isTakeout?'Retirada':'iFood Entrega',
-      client:(c.customer&&c.customer.name)||'—',
-      item:'',canal:canal,cwId:c.id,orderType:c.order_type,
-      deliveredBy:c.delivered_by||null,
+      courier:courier,client:client,item:'',
+      canal:canal,cwId:c.id,orderType:orderType,
+      deliveredBy:deliveredBy,
       descIfood:0,descLoja:0,comissao:0,taxaPgto:0,repasse:null,troco:troco
     };
     if(det)aplicarDetalhesCW(obj,det);
@@ -617,7 +655,7 @@ function processar(foodyArr,cwArr,data){
 
   novos.sort(function(a,b){return a.idNum-b.idNum;});
 
-  // preservar conf e troco anteriores
+  // Preservar conf e troco anteriores
   var confMap={},trocoMap={};
   CS.forEach(function(p){if(p.conf)confMap[p.id]=true;if(p.troco>0)trocoMap[p.id]=p.troco;});
   novos.forEach(function(p){if(trocoMap[p.id]&&!p.troco)p.troco=trocoMap[p.id];});
@@ -665,6 +703,7 @@ function aplicarDetalhesCW(p,det){
 }
 
 function buscarDetalhes(cwArr){
+  // ETAPA 2: busca detalhes de TODOS os pedidos CW
   var ids=cwArr.filter(function(p){return p.id&&!cwDetalhes[p.id];}).map(function(p){return p.id;});
   if(!ids.length)return;
   var total=ids.length,buscados=0;
@@ -672,48 +711,31 @@ function buscarDetalhes(cwArr){
   document.getElementById('det-prog').textContent='0/'+total;
   function buscarLote(idx){
     var lote=ids.slice(idx,idx+4);
-    if(!lote.length){document.getElementById('ifood-bar').classList.add('hid');document.getElementById('if-det-status').textContent='detalhes: '+total+' carregados ✓';render();return;}
+    if(!lote.length){
+      document.getElementById('ifood-bar').classList.add('hid');
+      document.getElementById('if-det-status').textContent='detalhes: '+total+' carregados ✓';
+      // Re-processa com todos os detalhes disponíveis (cruzamento por display_id completo)
+      if(_foodyGlobal.length)processar(_foodyGlobal,_cwGlobal,_dataGlobal);
+      return;
+    }
     Promise.all(lote.map(function(id){
       return fetch('/api/cardapio/detalhes?ids='+id).then(function(r){return r.json();}).then(function(res){
         if(res.ok&&res.pedidos&&res.pedidos[0]){
-          var det=res.pedidos[0];cwDetalhes[id]=det;
-          PD.forEach(function(p){
-            if(p.cwId==id){
-              if(p.fonte==='cw'){
-                // atualizar tot, pgto e id com display_id real
-                if(!p.tot){p.tot=+det.total||0;p.dFee=+det.delivery_fee||0;}
-                if(p.pgto==='online'&&det.payments)p.pgto=pgtoFromCW(det.payments);
-                if(det.display_id && p.id!==String(det.display_id)){
-                  var oldId=p.id;
-                  p.id=String(det.display_id);
-                  p.idNum=det.display_id;
-                  if(confMap[oldId]){confMap[p.id]=true;delete confMap[oldId];}
-                }
-              }
-              aplicarDetalhesCW(p,det);
-            }
-          });
-          // preservar conf antes de rebuild
-          var confMap={};CS.forEach(function(p){if(p.conf)confMap[p.id]=true;});
-          CS=PD.filter(function(p){return !(p.pgto==='online'&&p.canal==='ifood')&&!p.isCancelled;}).map(function(p){
-            var pgtoE=null;
-            CS.forEach(function(old){if(old.cwId&&old.cwId===p.cwId)pgtoE=old.pgtoE;});
-            return Object.assign({},p,{conf:!!confMap[p.id]||(p.pgto==='pix'),pgtoE:pgtoE});
-          });
+          cwDetalhes[id]=res.pedidos[0];
         }
         buscados++;
         document.getElementById('det-prog').textContent=buscados+'/'+total;
         document.getElementById('det-fill').style.width=Math.round(buscados/total*100)+'%';
       }).catch(function(){buscados++;});
     })).then(function(){
-      render();
+      // Re-processa após cada lote para atualizar cruzamentos por display_id
+      if(_foodyGlobal.length)processar(_foodyGlobal,_cwGlobal,_dataGlobal);
       if(idx+4<ids.length){
         document.getElementById('if-det-status').textContent='aguardando 65s (limite API)...';
         setTimeout(function(){buscarLote(idx+4);},65000);
       } else {
         document.getElementById('ifood-bar').classList.add('hid');
         document.getElementById('if-det-status').textContent='detalhes: '+buscados+'/'+total+' ✓';
-        render();
       }
     });
   }
