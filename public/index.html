@@ -380,6 +380,7 @@ var DIAS_SEM=['Domingo','Segunda','Terça','Quarta','Quinta','Sexta','Sábado'];
 var PD=[],CS=[],CF=[],charts={},cdVal=60,cdTimer=null,cwDetalhes={},modoHistorico=false;
 
 function R(v){return 'R$ '+v.toFixed(2).replace('.',',');}
+function dispId(id){return String(id).startsWith('cw_')?'...':String(id);}
 function pct(v,t){return Math.round(v/(t||1)*100);}
 function hojeStr(){var d=new Date();d.setHours(d.getHours()-3);return d.toISOString().slice(0,10);}
 function fmtData(s){return s.split('-').reverse().join('/');}
@@ -567,7 +568,7 @@ function processar(foodyArr,cwArr,data){
         troco=parseFloat(det.payments[0].change_for);
     }
     var obj={
-      id:c.display_id?String(c.display_id):String(c.id).slice(-5),idNum:c.display_id||c.id,hora:hora,horaEntrega:null,
+      id:'cw_'+c.id,idNum:c.id,cwRealId:c.id,hora:hora,horaEntrega:null,
       status:c.status,isCancelled:isCancelled,fonte:'cw',
       dFee:dFee,pgto:pgto,cFee:0,tot:tot,
       courier:isTakeout?'Retirada':'iFood Entrega',
@@ -648,7 +649,7 @@ function buscarDetalhes(cwArr){
                 // atualizar tot, pgto e id com display_id real
                 if(!p.tot){p.tot=+det.total||0;p.dFee=+det.delivery_fee||0;}
                 if(p.pgto==='online'&&det.payments)p.pgto=pgtoFromCW(det.payments);
-                if(det.display_id && p.id!==String(det.display_id)){
+                if(det.display_id){
                   var oldId=p.id;
                   p.id=String(det.display_id);
                   p.idNum=det.display_id;
@@ -736,7 +737,7 @@ function render(){
   document.getElementById('tot-lbl').textContent=PD.length+' pedidos ('+PDfin.length+' finalizados)';
   document.getElementById('otb').innerHTML=PD.map(function(p){
     var rep=p.repasse!==null?('<span style="color:var(--green)">'+R(p.repasse)+'</span>'):'<span style="color:var(--muted)">—</span>';
-    return '<tr><td class="mn" style="color:var(--muted)">#'+p.id+'</td><td>'+p.client+'</td><td>'+p.courier.split(' ')[0]+'</td><td>'+canalPill(p.canal)+'</td><td>'+pgtoPill(p.pgto)+'</td><td>'+stPill(p.status)+'</td><td>'+entPill(p.deliveredBy)+'</td><td class="mn" style="color:#ff6b4a">'+(p.descLoja>0?'-'+R(p.descLoja):'—')+'</td><td class="mn" style="color:var(--green)">'+(p.descIfood>0?'+'+R(p.descIfood):'—')+'</td><td class="mn" style="color:#ff6b4a">'+(p.comissao>0?'-'+R(p.comissao):'—')+'</td><td class="mn" style="font-weight:600">'+R(p.tot)+'</td><td>'+rep+'</td></tr>';
+    return '<tr><td class="mn" style="color:var(--muted)">#'+dispId(p.id)+'</td><td>'+p.client+'</td><td>'+p.courier.split(' ')[0]+'</td><td>'+canalPill(p.canal)+'</td><td>'+pgtoPill(p.pgto)+'</td><td>'+stPill(p.status)+'</td><td>'+entPill(p.deliveredBy)+'</td><td class="mn" style="color:#ff6b4a">'+(p.descLoja>0?'-'+R(p.descLoja):'—')+'</td><td class="mn" style="color:var(--green)">'+(p.descIfood>0?'+'+R(p.descIfood):'—')+'</td><td class="mn" style="color:#ff6b4a">'+(p.comissao>0?'-'+R(p.comissao):'—')+'</td><td class="mn" style="font-weight:600">'+R(p.tot)+'</td><td>'+rep+'</td></tr>';
   }).join('');
 
   ['c1','c2','c3','c4'].forEach(function(id){if(charts[id]){charts[id].destroy();delete charts[id];}});
@@ -793,7 +794,7 @@ function buildC(){
     if(pg==='money'){
       trocoHtml='<br><span style="font-size:10px;color:var(--muted)">troco: </span><input type="number" step="0.01" min="0" value="'+(p.troco||0)+'" style="width:65px;background:var(--bg3);border:1px solid var(--border2);color:var(--yellow);padding:2px 5px;border-radius:4px;font-size:11px" onchange="setTroco('+i+',this.value)" onclick="event.stopPropagation()">';
     }
-    return '<tr id="cr'+i+'" class="'+(p.conf?'okr':'')+(hide?' hid':'')+'"><td class="mn" style="font-weight:600">#'+p.id+'</td><td class="mn" style="font-size:11px;color:var(--muted)">'+hora+'</td><td style="font-size:12px">'+p.courier+'</td><td><div style="display:flex;align-items:center;gap:5px"><span class="ppill '+PPC(pg)+'" id="pp'+i+'">'+PL(pg)+'</span><button class="ep" onclick="eP('+i+')">✏</button></div></td><td class="mn" style="font-weight:600">'+R(p.tot)+trocoHtml+'</td><td>'+stPill(p.status)+'</td><td style="text-align:center"><input type="checkbox" class="chk" '+(p.conf?'checked':'')+' onchange="tC('+i+',this)"></td></tr>';
+    return '<tr id="cr'+i+'" class="'+(p.conf?'okr':'')+(hide?' hid':'')+'"><td class="mn" style="font-weight:600">#'+dispId(p.id)+'</td><td class="mn" style="font-size:11px;color:var(--muted)">'+hora+'</td><td style="font-size:12px">'+p.courier+'</td><td><div style="display:flex;align-items:center;gap:5px"><span class="ppill '+PPC(pg)+'" id="pp'+i+'">'+PL(pg)+'</span><button class="ep" onclick="eP('+i+')">✏</button></div></td><td class="mn" style="font-weight:600">'+R(p.tot)+trocoHtml+'</td><td>'+stPill(p.status)+'</td><td style="text-align:center"><input type="checkbox" class="chk" '+(p.conf?'checked':'')+' onchange="tC('+i+',this)"></td></tr>';
   }).join('');
   upC();
 }
@@ -914,7 +915,7 @@ function abrirHistDia(data){
     document.getElementById('hist-tot-lbl').textContent=PDh.length+' pedidos finalizados em '+fmtData(data);
     document.getElementById('hist-otb').innerHTML=PDh.map(function(p){
       var rep=p.repasse!==null?('<span style="color:var(--green)">'+R(p.repasse)+'</span>'):'<span style="color:var(--muted)">—</span>';
-      return '<tr><td class="mn" style="color:var(--muted)">#'+p.id+'</td><td>'+p.client+'</td><td>'+p.courier.split(' ')[0]+'</td><td>'+canalPill(p.canal)+'</td><td>'+pgtoPill(p.pgto)+'</td><td>'+stPill(p.status)+'</td><td>'+entPill(p.deliveredBy)+'</td><td class="mn" style="color:#ff6b4a">'+(p.descLoja>0?'-'+R(p.descLoja):'—')+'</td><td class="mn" style="color:var(--green)">'+(p.descIfood>0?'+'+R(p.descIfood):'—')+'</td><td class="mn" style="color:#ff6b4a">'+(p.comissao>0?'-'+R(p.comissao):'—')+'</td><td class="mn" style="font-weight:600">'+R(p.tot)+'</td><td>'+rep+'</td></tr>';
+      return '<tr><td class="mn" style="color:var(--muted)">#'+dispId(p.id)+'</td><td>'+p.client+'</td><td>'+p.courier.split(' ')[0]+'</td><td>'+canalPill(p.canal)+'</td><td>'+pgtoPill(p.pgto)+'</td><td>'+stPill(p.status)+'</td><td>'+entPill(p.deliveredBy)+'</td><td class="mn" style="color:#ff6b4a">'+(p.descLoja>0?'-'+R(p.descLoja):'—')+'</td><td class="mn" style="color:var(--green)">'+(p.descIfood>0?'+'+R(p.descIfood):'—')+'</td><td class="mn" style="color:#ff6b4a">'+(p.comissao>0?'-'+R(p.comissao):'—')+'</td><td class="mn" style="font-weight:600">'+R(p.tot)+'</td><td>'+rep+'</td></tr>';
     }).join('');
   }).catch(function(e){document.getElementById('hist-otb').innerHTML='<tr><td colspan="12" style="text-align:center;color:#ff6b4a">Erro: '+e.message+'</td></tr>';});
 }
