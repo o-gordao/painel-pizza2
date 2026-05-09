@@ -965,6 +965,12 @@ function renderHistoricoRotas(hist){
       +'<span style="font-size:11px;color:var(--muted)">'+r.hora+' → '+(r.horaSaiu||'—')+(r.foiAlterada?' ✏':'')+'</span></div>';
   }).join('');
 }
+function T(id,el){
+  document.querySelectorAll('.panel').forEach(function(p){p.classList.remove('on');});
+  document.querySelectorAll('.tab').forEach(function(b){b.classList.remove('on');});
+  document.getElementById('panel-'+id).classList.add('on');
+  el.classList.add('on');
+}
 var _T=T;
 T=function(id,el){_T(id,el);if(id==='rotas'){atualizarPedidosDisponiveis();carregarRotas();}};
 // ── FIM ROTAS ─────────────────────────────────────────────────
