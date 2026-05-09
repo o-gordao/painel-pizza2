@@ -526,7 +526,7 @@ function mudarData(data){
     var cwArr=Array.isArray(cwObj.orders)?cwObj.orders:Array.isArray(cwObj)?cwObj:[];
     var detMap=res.det||{};
     processar(foodyArr,cwArr,data);
-    PD.forEach(function(p){var det=p.cwId?detMap[p.cwId]:null;if(det)aplicarDetalhes(p,det);});
+    PD.forEach(function(p){var det=p.cwId?detMap[p.cwId]:null;if(det)aplicarDetalhesCW(p,det);});
     render();
     document.getElementById('logo-sub').textContent='fechamento · '+fmtData(data)+' (histórico)';
     document.getElementById('badge-att').textContent='📅 '+fmtData(data);
@@ -940,7 +940,7 @@ function abrirHistDia(data){
       var dt=p.date||p.creationDate||'',canal='catalog',cwId=null;
       for(var i=0;i<cwArr.length;i++){try{var diff=Math.abs(new Date(cwArr[i].created_at)-new Date(dt))/1000;if(diff<90){canal=cwArr[i].sales_channel||'ifood';cwId=cwArr[i].id;break;}}catch(e){}}
       var obj={id:String(p.id),idNum:parseInt(p.id)||0,status:p.status,isCancelled:false,tot:+p.orderTotal||0,cFee:+p.courierFee||0,dFee:+p.deliveryFee||0,pgto:PGTO_MAP[p.paymentMethod]||'online',courier:(p.courier&&p.courier.courierName)||'—',client:(p.customer&&p.customer.customerName)||'—',canal:canal,cwId:cwId,deliveredBy:null,descIfood:0,descLoja:0,comissao:0,taxaPgto:0,repasse:null,horaEntrega:null};
-      if(cwId&&detMap[cwId])aplicarDetalhes(obj,detMap[cwId]);
+      if(cwId&&detMap[cwId])aplicarDetalhesCW(obj,detMap[cwId]);
       PDh.push(obj);
     });
     PDh.sort(function(a,b){return a.idNum-b.idNum;});
