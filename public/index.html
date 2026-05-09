@@ -6,6 +6,8 @@
 <title>Fechamento — Disck Pizza Hollywood</title>
 <link href="https://fonts.googleapis.com/css2?family=DM+Mono:wght@400;500&family=DM+Sans:wght@400;500;600&display=swap" rel="stylesheet">
 <script src="https://cdnjs.cloudflare.com/ajax/libs/Chart.js/4.4.1/chart.umd.js"></script>
+<script src="https://www.gstatic.com/firebasejs/9.23.0/firebase-app-compat.js"></script>
+<script src="https://www.gstatic.com/firebasejs/9.23.0/firebase-database-compat.js"></script>
 <style>
 :root{--bg:#0f0f0f;--bg2:#181818;--bg3:#222;--border:#2a2a2a;--border2:#333;--text:#f0f0f0;--muted:#888;--accent:#e8452c;--green:#2ecc71;--yellow:#f1c40f;--blue:#3498db;--purple:#9b59b6}
 *{box-sizing:border-box;margin:0;padding:0}
@@ -118,6 +120,19 @@ hr.d{border:none;border-top:1px solid var(--border);margin:5px 0}
 .ctotal{background:var(--bg3);border-radius:8px;padding:10px 12px;margin-bottom:6px;font-size:12px;display:flex;justify-content:space-between;align-items:center}
 .mf{display:flex;gap:8px;margin-top:12px;flex-wrap:wrap}
 .loader{position:fixed;top:0;left:0;right:0;bottom:0;background:rgba(15,15,15,.92);z-index:500;display:flex;flex-direction:column;align-items:center;justify-content:center;gap:14px}
+/* ROTAS */
+.rota-card{background:var(--bg3);border:1px solid var(--border);border-radius:10px;padding:16px;margin-bottom:10px;transition:border-color .3s}
+.rota-card.alterada{border-color:rgba(230,126,34,.6);animation:pulse-orange 2s infinite}
+@keyframes pulse-orange{0%,100%{border-color:rgba(230,126,34,.6)}50%{border-color:rgba(230,126,34,1)}}
+.rota-label{font-size:15px;font-weight:700;margin-bottom:8px}
+.rota-nums{display:flex;flex-wrap:wrap;gap:6px;margin-bottom:8px}
+.rota-num{background:var(--bg2);border:1px solid var(--border2);padding:6px 14px;border-radius:8px;font-family:'DM Mono',monospace;font-size:22px;font-weight:700;letter-spacing:1px}
+.rota-hora{font-size:11px;color:var(--muted)}
+.rota-alert{background:rgba(230,126,34,.15);border:1px solid rgba(230,126,34,.4);border-radius:8px;padding:10px 12px;margin-bottom:8px;font-size:12px;color:#e67e22;display:flex;align-items:center;justify-content:space-between;gap:8px}
+.aguard-card{background:rgba(52,152,219,.08);border:1px solid rgba(52,152,219,.4);border-radius:10px;padding:16px;margin-bottom:10px}
+.notif-badge{background:var(--accent);color:#fff;border-radius:50%;width:18px;height:18px;font-size:10px;font-weight:700;display:inline-flex;align-items:center;justify-content:center;margin-left:4px}
+.rota-edit-input{background:var(--bg2);border:1px solid var(--border2);color:var(--text);padding:6px 10px;border-radius:6px;font-size:13px;font-family:'DM Mono',monospace;outline:none;width:100%;margin-bottom:8px}
+.rota-edit-input:focus{border-color:var(--accent)}
 </style>
 </head>
 <body>
@@ -324,54 +339,42 @@ hr.d{border:none;border-top:1px solid var(--border);margin:5px 0}
 
   <!-- ROTAS -->
   <div id="panel-rotas" class="panel">
-
     <!-- criar rota -->
     <div class="sc" style="margin-bottom:12px">
       <div class="sc-title">🛵 criar nova rota</div>
-      <div style="margin-bottom:12px;font-size:12px;color:var(--muted)">Selecione os pedidos abaixo ou digite os números manualmente</div>
-
-      <!-- seleção rápida dos pedidos pendentes da conferência -->
-      <div style="margin-bottom:12px">
-        <div style="font-size:11px;color:var(--muted);margin-bottom:8px;text-transform:uppercase;letter-spacing:.5px">pedidos pendentes na conferência</div>
+      <div style="margin-bottom:10px;font-size:12px;color:var(--muted)">Clique nos pedidos abaixo ou digite manualmente</div>
+      <div style="margin-bottom:10px">
+        <div style="font-size:11px;color:var(--muted);margin-bottom:8px;text-transform:uppercase;letter-spacing:.5px">pedidos prontos / abertos</div>
         <div id="rotas-pedidos-disponiveis" style="display:flex;flex-wrap:wrap;gap:6px"></div>
       </div>
-
-      <div style="margin-bottom:10px">
-        <div style="font-size:11px;color:var(--muted);margin-bottom:6px;text-transform:uppercase;letter-spacing:.5px">números selecionados</div>
-        <div style="display:flex;gap:8px;align-items:center;flex-wrap:wrap">
-          <input type="text" id="rotas-numeros" placeholder="Ex: 11583, 11584, 11585"
-            style="flex:1;min-width:200px;background:var(--bg3);border:1px solid var(--border2);color:var(--text);padding:8px 12px;border-radius:6px;font-size:13px;font-family:'DM Mono',monospace;outline:none">
-          <button class="btn btn-a" onclick="criarRota()" id="btn-criar-rota">🛵 enviar para expedição</button>
-        </div>
+      <div style="display:flex;gap:8px;align-items:flex-start;flex-wrap:wrap;margin-bottom:8px">
+        <input type="text" id="rotas-numeros" placeholder="Ex: 11583, 11584"
+          style="flex:1;min-width:200px;background:var(--bg3);border:1px solid var(--border2);color:var(--text);padding:8px 12px;border-radius:6px;font-size:13px;font-family:'DM Mono',monospace;outline:none"
+          oninput="validarDuplicatasInput()">
+        <button class="btn btn-a" onclick="criarRota()" id="btn-criar-rota">🛵 enviar para expedição</button>
       </div>
-      <div id="rotas-feedback" style="font-size:12px;margin-top:6px"></div>
-    </div>
-
-    <!-- rotas ativas -->
-    <div class="sc" style="margin-bottom:12px">
-      <div style="display:flex;align-items:center;justify-content:space-between;margin-bottom:12px">
-        <div class="sc-title" style="margin-bottom:0">rotas ativas</div>
-        <button class="btn" onclick="carregarRotas()"><span id="rotas-spin"></span>🔄 atualizar</button>
-      </div>
-      <div id="rotas-ativas">
-        <div style="text-align:center;color:var(--muted);padding:20px">clique em atualizar para carregar</div>
-      </div>
+      <div id="rotas-feedback" style="font-size:12px"></div>
     </div>
 
     <!-- aguardando liberação -->
     <div class="sc" style="margin-bottom:12px">
-      <div class="sc-title">aguardando liberação</div>
-      <div id="rotas-aguardando">
-        <div style="text-align:center;color:var(--muted);padding:12px">—</div>
+      <div style="display:flex;align-items:center;gap:8px;margin-bottom:12px">
+        <div class="sc-title" style="margin-bottom:0">aguardando liberação</div>
+        <span id="aguard-badge"></span>
       </div>
+      <div id="rotas-aguardando"><div style="text-align:center;color:var(--muted);padding:12px">Nenhuma aguardando</div></div>
     </div>
 
-    <!-- histórico rotas -->
+    <!-- rotas ativas -->
+    <div class="sc" style="margin-bottom:12px">
+      <div class="sc-title">rotas ativas <span id="rotas-count" style="color:var(--muted);font-size:11px"></span></div>
+      <div id="rotas-ativas"><div style="text-align:center;color:var(--muted);padding:20px">Conectando ao Firebase...</div></div>
+    </div>
+
+    <!-- histórico -->
     <div class="sc">
-      <div class="sc-title">histórico de rotas (hoje)</div>
-      <div id="rotas-historico">
-        <div style="text-align:center;color:var(--muted);padding:12px">—</div>
-      </div>
+      <div class="sc-title">histórico de rotas</div>
+      <div id="rotas-historico"><div style="text-align:center;color:var(--muted);padding:12px">—</div></div>
     </div>
   </div>
 <!-- MODAL PENDÊNCIAS -->
@@ -997,175 +1000,260 @@ function exportCSV(){
 
 
 // ── ROTAS FIREBASE ────────────────────────────────────────────
-var FB_URL = 'https://pizzaria-rotas-default-rtdb.firebaseio.com';
-var rotasTimer = null;
+var fbApp = firebase.initializeApp({
+  apiKey: "AIzaSyBLtSyEOnLgIFEfNbrNk9oryQY9z5TLmsc",
+  authDomain: "pizzaria-rotas.firebaseapp.com",
+  databaseURL: "https://pizzaria-rotas-default-rtdb.firebaseio.com",
+  projectId: "pizzaria-rotas",
+  storageBucket: "pizzaria-rotas.firebasestorage.app",
+  messagingSenderId: "581001630049",
+  appId: "1:581001630049:web:08c174cdc8b04b6d453520"
+});
+var db = firebase.database();
+var rotasListeners = [];
+var aguardandoAnterior = 0;
 
 function horaAtualBrasil() {
   var d = new Date(); d.setHours(d.getHours()-3);
   return d.toTimeString().slice(0,5);
 }
 
-function fbGet(path) {
-  return fetch(FB_URL + path + '.json').then(function(r){ return r.json(); });
-}
-function fbPut(path, data) {
-  return fetch(FB_URL + path + '.json', {method:'PUT', body: JSON.stringify(data)}).then(function(r){ return r.json(); });
-}
-function fbPost(path, data) {
-  return fetch(FB_URL + path + '.json', {method:'POST', body: JSON.stringify(data)}).then(function(r){ return r.json(); });
-}
-function fbDelete(path) {
-  return fetch(FB_URL + path + '.json', {method:'DELETE'}).then(function(r){ return r.json(); });
+// ── listeners em tempo real ───────────────────────────────────
+function iniciarListenersRotas() {
+  db.ref('rotas').on('value', function(snap) {
+    renderRotasAtivas(snap.val() || {});
+  });
+  db.ref('aguardando').on('value', function(snap) {
+    renderAguardando(snap.val() || {});
+  });
+  db.ref('historico').on('value', function(snap) {
+    renderHistoricoRotas(snap.val() || {});
+  });
 }
 
-// preenche pedidos disponíveis da conferência
+// ── validação duplicatas ──────────────────────────────────────
+function validarDuplicatasInput() {
+  var nums = getNums();
+  if (!nums.length) { document.getElementById('rotas-feedback').innerHTML=''; return; }
+  db.ref('rotas').get().then(function(snap) {
+    var rotas = snap.val() || {};
+    var erros = [];
+    nums.forEach(function(n) {
+      Object.values(rotas).forEach(function(r) {
+        if ((r.numeros||[]).indexOf(n) !== -1) erros.push('#'+n+' já está na '+r.label);
+      });
+    });
+    document.getElementById('rotas-feedback').innerHTML = erros.length
+      ? '<span style="color:#ff6b4a">⚠ ' + erros.join(' · ') + '</span>' : '';
+  });
+}
+
+function getNums() {
+  return (document.getElementById('rotas-numeros').value||'').split(',').map(function(s){return s.trim();}).filter(Boolean);
+}
+
+// ── criar rota ────────────────────────────────────────────────
+function criarRota() {
+  var nums = getNums();
+  if (!nums.length) {
+    document.getElementById('rotas-feedback').innerHTML='<span style="color:#ff6b4a">⚠ Selecione ao menos um pedido</span>';
+    return;
+  }
+  var btn = document.getElementById('btn-criar-rota');
+  btn.disabled=true; btn.textContent='enviando...';
+
+  // validar duplicatas antes de criar
+  db.ref('rotas').get().then(function(snap) {
+    var rotas = snap.val() || {};
+    var erros = [];
+    var numsExp = nums.map(function(n){return String(n).slice(-2);});
+    numsExp.forEach(function(n, i) {
+      Object.values(rotas).forEach(function(r) {
+        if ((r.numeros||[]).indexOf(n) !== -1) erros.push('#'+nums[i]+' já está na '+r.label);
+      });
+    });
+    if (erros.length) {
+      document.getElementById('rotas-feedback').innerHTML='<span style="color:#ff6b4a">⚠ '+erros.join(' · ')+'</span>';
+      btn.disabled=false; btn.textContent='🛵 enviar para expedição';
+      return;
+    }
+    // criar
+    return db.ref('contador').get().then(function(snapC) {
+      var c = (snapC.val()||0)+1;
+      return db.ref('contador').set(c).then(function() {
+        var label = 'Rota '+c;
+        return db.ref('rotas').push({
+          label:label, numeros:numsExp, hora:horaAtualBrasil(),
+          status:'pendente', alterada:false, foiAlterada:false, horaAlteracao:null
+        }).then(function() {
+          document.getElementById('rotas-feedback').innerHTML='<span style="color:var(--green)">✅ '+label+' enviada!</span>';
+          document.getElementById('rotas-numeros').value='';
+          atualizarPedidosDisponiveis();
+          btn.disabled=false; btn.textContent='🛵 enviar para expedição';
+        });
+      });
+    });
+  }).catch(function(e) {
+    document.getElementById('rotas-feedback').innerHTML='<span style="color:#ff6b4a">⚠ Erro: '+e.message+'</span>';
+    btn.disabled=false; btn.textContent='🛵 enviar para expedição';
+  });
+}
+
+// ── editar rota ───────────────────────────────────────────────
+function editarRota(key, labelAtual, numsAtuais) {
+  var div = document.getElementById('edit-'+key);
+  div.style.display = div.style.display==='none'?'block':'none';
+  if (div.style.display==='block') {
+    document.getElementById('edit-input-'+key).value = numsAtuais.join(', ');
+  }
+}
+
+function salvarEdicao(key, labelAtual) {
+  var novosNums = (document.getElementById('edit-input-'+key).value||'').split(',').map(function(s){return s.trim();}).filter(Boolean);
+  if (!novosNums.length) return;
+  var numsExp = novosNums.map(function(n){return String(n).slice(-2);});
+  var horaNow = horaAtualBrasil();
+  db.ref('rotas').get().then(function(snap) {
+    var rotas = snap.val()||{};
+    var erros = [];
+    numsExp.forEach(function(n,i) {
+      Object.entries(rotas).forEach(function(entry) {
+        if (entry[0]===key) return;
+        if ((entry[1].numeros||[]).indexOf(n)!==-1) erros.push('#'+novosNums[i]+' já está na '+entry[1].label);
+      });
+    });
+    if (erros.length) {
+      alert('⚠ '+erros.join('
+'));
+      return;
+    }
+    db.ref('rotas/'+key).update({
+      numeros:numsExp, alterada:true, foiAlterada:true, horaAlteracao:horaNow
+    }).then(function() {
+      document.getElementById('edit-'+key).style.display='none';
+    });
+  });
+}
+
+// ── liberar rota ──────────────────────────────────────────────
+function liberarRota(key, dados) {
+  db.ref('aguardando/'+key).remove()
+    .then(function() {
+      return db.ref('historico').push({
+        label:dados.label, numeros:dados.numeros,
+        hora:dados.hora, horaSaiu:dados.horaSaiu,
+        horaLiberado:horaAtualBrasil(), foiAlterada:dados.foiAlterada||false
+      });
+    });
+}
+
+// ── render rotas ativas ───────────────────────────────────────
+function renderRotasAtivas(rotas) {
+  var div = document.getElementById('rotas-ativas');
+  var entries = Object.entries(rotas);
+  document.getElementById('rotas-count').textContent = entries.length ? '('+entries.length+')' : '';
+  if (!entries.length) { div.innerHTML='<div style="text-align:center;color:var(--muted);padding:16px">Nenhuma rota ativa</div>'; return; }
+  div.innerHTML = entries.map(function(entry) {
+    var key=entry[0], r=entry[1];
+    var numsStr = JSON.stringify(r.numeros||[]);
+    return '<div class="rota-card'+(r.alterada?' alterada':'')+'">'
+      +'<div style="display:flex;align-items:center;justify-content:space-between;margin-bottom:8px">'
+      +'<div class="rota-label">'+r.label+'</div>'
+      +(r.alterada?'<span style="font-size:11px;background:rgba(230,126,34,.15);color:#e67e22;padding:2px 8px;border-radius:20px">⚠ Alterada</span>':'')
+      +'</div>'
+      +'<div class="rota-nums">'+(r.numeros||[]).map(function(n){return '<span class="rota-num">'+n+'</span>';}).join('')+'</div>'
+      +'<div class="rota-hora" style="margin-bottom:10px">Enviada às '+r.hora+(r.horaAlteracao?' · Editada às '+r.horaAlteracao:'')+'</div>'
+      +'<button class="btn" style="width:100%;margin-bottom:6px" onclick="editarRota(''+key+'',''+r.label+'','+numsStr+')">✏ Editar rota</button>'
+      +'<div id="edit-'+key+'" style="display:none;margin-top:8px">'
+      +'<input id="edit-input-'+key+'" class="rota-edit-input" placeholder="Números separados por vírgula">'
+      +'<div style="display:flex;gap:6px">'
+      +'<button class="btn btn-a" style="flex:1" onclick="salvarEdicao(''+key+'',''+r.label+'')">✓ Salvar</button>'
+      +'<button class="btn" onclick="editarRota(''+key+'','','')">Cancelar</button>'
+      +'</div></div>'
+      +'</div>';
+  }).join('');
+}
+
+// ── render aguardando ─────────────────────────────────────────
+function renderAguardando(aguardando) {
+  var div = document.getElementById('rotas-aguardando');
+  var entries = Object.entries(aguardando);
+  var badge = document.getElementById('aguard-badge');
+  // notificação se chegou nova rota
+  if (entries.length > aguardandoAnterior && aguardandoAnterior >= 0) {
+    badge.innerHTML = '<span class="notif-badge">'+entries.length+'</span>';
+    mostrarToast('🔔 Nova rota aguardando liberação!', 'yellow');
+  } else if (!entries.length) {
+    badge.innerHTML = '';
+  } else {
+    badge.innerHTML = '<span class="notif-badge">'+entries.length+'</span>';
+  }
+  aguardandoAnterior = entries.length;
+  if (!entries.length) { div.innerHTML='<div style="text-align:center;color:var(--muted);padding:12px">Nenhuma aguardando</div>'; return; }
+  div.innerHTML = entries.map(function(entry) {
+    var key=entry[0], r=entry[1];
+    var dadosStr = JSON.stringify(r).replace(/'/g,"\'");
+    return '<div class="aguard-card">'
+      +'<div class="rota-label">'+r.label+'</div>'
+      +'<div class="rota-nums">'+(r.numeros||[]).map(function(n){return '<span class="rota-num">'+n+'</span>';}).join('')+'</div>'
+      +'<div class="rota-hora" style="margin-bottom:10px">Enviada às '+r.hora+' · Saiu às '+(r.horaSaiu||'—')+'</div>'
+      +'<button class="btn btn-a" style="width:100%" onclick="liberarRota(''+key+'',JSON.parse(decodeURIComponent(''+encodeURIComponent(JSON.stringify(r))+'')))">✓ Liberar para entrega</button>'
+      +'</div>';
+  }).join('');
+}
+
+// ── render histórico ──────────────────────────────────────────
+function renderHistoricoRotas(historico) {
+  var div = document.getElementById('rotas-historico');
+  var entries = Object.entries(historico);
+  if (!entries.length) { div.innerHTML='<div style="text-align:center;color:var(--muted);padding:12px">Sem rotas no histórico</div>'; return; }
+  // ordenar por número da rota (maior primeiro)
+  entries.sort(function(a,b) {
+    var na=parseInt((a[1].label||'').replace(/\D/g,''))||0;
+    var nb=parseInt((b[1].label||'').replace(/\D/g,''))||0;
+    return nb-na;
+  });
+  div.innerHTML = entries.slice(0,20).map(function(entry) {
+    var r=entry[1];
+    return '<div style="display:flex;align-items:center;justify-content:space-between;padding:9px 0;border-bottom:1px solid var(--border);gap:8px;flex-wrap:wrap">'
+      +'<span style="font-weight:600;min-width:70px">'+r.label+'</span>'
+      +'<div style="display:flex;gap:4px;flex-wrap:wrap">'+(r.numeros||[]).map(function(n){return '<span style="background:var(--bg3);border:1px solid var(--border);padding:2px 8px;border-radius:6px;font-family:'DM Mono',monospace;font-size:16px;font-weight:700">'+n+'</span>';}).join('')+'</div>'
+      +'<span style="font-size:11px;color:var(--muted)">'+r.hora+' → '+(r.horaSaiu||'—')+(r.foiAlterada?' · ✏ editada':'')+'</span>'
+      +'</div>';
+  }).join('');
+}
+
+// ── pedidos disponíveis ───────────────────────────────────────
 function atualizarPedidosDisponiveis() {
   var div = document.getElementById('rotas-pedidos-disponiveis');
   if (!div) return;
-  var pendentes = CS.filter(function(p){ return !p.conf; });
-  if (!pendentes.length) {
-    div.innerHTML = '<span style="font-size:12px;color:var(--muted)">nenhum pedido pendente na conferência</span>';
-    return;
-  }
-  var selecionados = (document.getElementById('rotas-numeros').value || '').split(',').map(function(s){ return s.trim(); }).filter(Boolean);
-  div.innerHTML = pendentes.map(function(p) {
-    var sel = selecionados.indexOf(p.id) !== -1;
-    return '<button onclick="togglePedidoRota(\'' + p.id + '\')" style="padding:5px 10px;border-radius:6px;border:1px solid '
-      + (sel ? 'var(--green)' : 'var(--border2)') + ';background:' + (sel ? 'rgba(46,204,113,.15)' : 'var(--bg3)')
-      + ';color:' + (sel ? 'var(--green)' : 'var(--text)') + ';cursor:pointer;font-size:12px;font-family:\'DM Mono\',monospace">'
-      + '#' + p.id + ' · ' + p.courier.split(' ')[0] + '</button>';
+  var statusValidos = ['open','accepted','ready','dispatched'];
+  var disponiveis = PD.filter(function(p){ return statusValidos.indexOf(p.status)!==-1; });
+  if (!disponiveis.length) { div.innerHTML='<span style="font-size:12px;color:var(--muted)">nenhum pedido disponível</span>'; return; }
+  var selecionados = getNums();
+  div.innerHTML = disponiveis.map(function(p) {
+    var sel = selecionados.indexOf(p.id)!==-1;
+    return '<button onclick="togglePedidoRota(''+p.id+'')" style="padding:5px 12px;border-radius:6px;border:1px solid '
+      +(sel?'var(--green)':'var(--border2)')+';background:'+(sel?'rgba(46,204,113,.15)':'var(--bg3)')
+      +';color:'+(sel?'var(--green)':'var(--text)')+';cursor:pointer;font-size:12px;font-family:'DM Mono',monospace">'
+      +'#'+p.id+' · '+p.courier.split(' ')[0]+'</button>';
   }).join('');
 }
 
 function togglePedidoRota(id) {
-  var input = document.getElementById('rotas-numeros');
-  var nums = input.value ? input.value.split(',').map(function(s){ return s.trim(); }).filter(Boolean) : [];
+  var nums = getNums();
   var idx = nums.indexOf(id);
-  if (idx === -1) nums.push(id);
-  else nums.splice(idx, 1);
-  input.value = nums.join(', ');
+  if (idx===-1) nums.push(id); else nums.splice(idx,1);
+  document.getElementById('rotas-numeros').value = nums.join(', ');
   atualizarPedidosDisponiveis();
+  validarDuplicatasInput();
 }
 
-async function criarRota() {
-  var input = document.getElementById('rotas-numeros');
-  var nums = input.value.split(',').map(function(s){ return s.trim(); }).filter(Boolean);
-  if (!nums.length) {
-    document.getElementById('rotas-feedback').innerHTML = '<span style="color:#ff6b4a">⚠ Digite ou selecione ao menos um pedido</span>';
-    return;
-  }
-  var btn = document.getElementById('btn-criar-rota');
-  btn.disabled = true; btn.textContent = 'enviando...';
-  document.getElementById('rotas-feedback').innerHTML = '';
-  try {
-    // 1. ler e incrementar contador
-    var contador = (await fbGet('/contador')) || 0;
-    var novoContador = contador + 1;
-    await fbPut('/contador', novoContador);
-    var label = 'Rota ' + novoContador;
-    // 2. criar rota
-    await fbPost('/rotas', {
-      label: label,
-      numeros: nums,
-      hora: horaAtualBrasil(),
-      status: 'pendente',
-      alterada: false,
-      foiAlterada: false,
-      horaAlteracao: null
-    });
-    document.getElementById('rotas-feedback').innerHTML = '<span style="color:var(--green)">✅ ' + label + ' enviada para expedição!</span>';
-    input.value = '';
-    atualizarPedidosDisponiveis();
-    carregarRotas();
-  } catch(e) {
-    document.getElementById('rotas-feedback').innerHTML = '<span style="color:#ff6b4a">⚠ Erro: ' + e.message + '</span>';
-  }
-  btn.disabled = false; btn.textContent = '🛵 enviar para expedição';
-}
-
-async function carregarRotas() {
-  document.getElementById('rotas-spin').textContent = '⏳ ';
-  try {
-    var rotas     = await fbGet('/rotas');
-    var aguardando = await fbGet('/aguardando');
-    var historico  = await fbGet('/historico');
-
-    // ATIVAS
-    var divAt = document.getElementById('rotas-ativas');
-    if (!rotas || !Object.keys(rotas).length) {
-      divAt.innerHTML = '<div style="text-align:center;color:var(--muted);padding:16px">Nenhuma rota ativa</div>';
-    } else {
-      divAt.innerHTML = Object.entries(rotas).map(function(entry) {
-        var k = entry[0], r = entry[1];
-        var alterada = r.alterada || r.foiAlterada;
-        return '<div style="background:var(--bg3);border:1px solid ' + (alterada?'rgba(241,196,15,.4)':'var(--border)') + ';border-radius:8px;padding:14px;margin-bottom:8px">'
-          + '<div style="display:flex;align-items:center;justify-content:space-between;margin-bottom:8px">'
-          + '<span style="font-weight:600">' + r.label + '</span>'
-          + (alterada ? '<span style="font-size:11px;background:rgba(241,196,15,.15);color:var(--yellow);padding:2px 8px;border-radius:20px">⚠ Alterada</span>' : '')
-          + '</div>'
-          + '<div style="display:flex;flex-wrap:wrap;gap:6px;margin-bottom:8px">'
-          + (r.numeros||[]).map(function(n){ return '<span style="background:var(--bg2);border:1px solid var(--border);padding:3px 9px;border-radius:6px;font-family:\'DM Mono\',monospace;font-size:12px">#'+n+'</span>'; }).join('')
-          + '</div>'
-          + '<div style="font-size:11px;color:var(--muted)">Enviada às ' + r.hora + (r.horaAlteracao?' · Editada às '+r.horaAlteracao:'') + '</div>'
-          + '</div>';
-      }).join('');
-    }
-
-    // AGUARDANDO
-    var divAg = document.getElementById('rotas-aguardando');
-    if (!aguardando || !Object.keys(aguardando).length) {
-      divAg.innerHTML = '<div style="text-align:center;color:var(--muted);padding:12px">Nenhuma aguardando</div>';
-    } else {
-      divAg.innerHTML = Object.entries(aguardando).map(function(entry) {
-        var r = entry[1];
-        return '<div style="background:rgba(52,152,219,.08);border:1px solid rgba(52,152,219,.3);border-radius:8px;padding:12px;margin-bottom:6px">'
-          + '<div style="font-weight:600;margin-bottom:6px">' + r.label + '</div>'
-          + '<div style="display:flex;flex-wrap:wrap;gap:4px;margin-bottom:6px">'
-          + (r.numeros||[]).map(function(n){ return '<span style="background:var(--bg3);border:1px solid var(--border);padding:2px 8px;border-radius:6px;font-size:12px;font-family:\'DM Mono\',monospace">#'+n+'</span>'; }).join('')
-          + '</div>'
-          + '<div style="font-size:11px;color:var(--muted)">Saiu às ' + (r.horaSaiu||'—') + '</div>'
-          + '</div>';
-      }).join('');
-    }
-
-    // HISTÓRICO
-    var divHist = document.getElementById('rotas-historico');
-    if (!historico || !Object.keys(historico).length) {
-      divHist.innerHTML = '<div style="text-align:center;color:var(--muted);padding:12px">Nenhuma rota no histórico</div>';
-    } else {
-      var itens = Object.entries(historico).reverse().slice(0, 15);
-      divHist.innerHTML = itens.map(function(entry) {
-        var r = entry[1];
-        return '<div style="display:flex;align-items:center;justify-content:space-between;padding:8px 0;border-bottom:1px solid var(--border);font-size:12px">'
-          + '<span style="font-weight:500">' + r.label + '</span>'
-          + '<span style="color:var(--muted);font-family:\'DM Mono\',monospace">'
-          + (r.numeros||[]).map(function(n){ return '#'+n; }).join(', ')
-          + '</span>'
-          + '<span style="color:var(--muted);font-size:11px">Saiu ' + (r.horaSaiu||'—') + ' · Liberado ' + (r.horaLiberado||'—') + '</span>'
-          + '</div>';
-      }).join('');
-    }
-  } catch(e) {
-    document.getElementById('rotas-ativas').innerHTML = '<div style="color:#ff6b4a;padding:12px">Erro ao carregar: ' + e.message + '</div>';
-  }
-  document.getElementById('rotas-spin').textContent = '';
-  // auto-refresh a cada 15s quando a aba estiver ativa
-  clearTimeout(rotasTimer);
-  rotasTimer = setTimeout(function(){
-    if(document.getElementById('panel-rotas').classList.contains('on')) carregarRotas();
-  }, 15000);
-}
-
-// carregar rotas ao abrir a aba
+// override T para iniciar listeners ao abrir aba
 var _T = T;
 T = function(id, el) {
   _T(id, el);
-  if (id === 'rotas') { atualizarPedidosDisponiveis(); carregarRotas(); }
+  if (id==='rotas') { atualizarPedidosDisponiveis(); iniciarListenersRotas(); }
 };
 // ── FIM ROTAS ─────────────────────────────────────────────────
-
-document.getElementById('filtro-data').value=hojeStr();
-carregar();
-</script>
-</body>
-</html>
+>
