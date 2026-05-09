@@ -566,26 +566,33 @@ function processar(foodyArr,cwArr,data){
     if(!isIfoodDel && !isTakeout) return; // ignora outros
     var hora=c.created_at?c.created_at.substring(11,16):'';
     var isCancelled=['cancelled','canceled'].indexOf(c.status)!==-1;
-    var pgto='online';
-    if(c.payments&&c.payments[0]){
-      var pt=c.payments[0].payment_type;
-      var pm=c.payments[0].payment_method;
-      if(pt==='offline'){pgto=pm==='credit_card'||pm==='debit_card'?'card':pm==='pix'||pm==='PIX'?'pix':pm==='money'?'money':'money';}
-      else{pgto='online';}
-    }
     var canal=c.sales_channel||'catalog';
+    // /orders retorna só resumo — tot e pgto vêm dos detalhes
+    // usamos cwDetalhes se já tiver, senão deixa zerado até buscar
+    var det=cwDetalhes[c.id]||null;
+    var pgto='online',tot=0,dFee=0,troco=0;
+    if(det){
+      tot=+det.total||0;
+      dFee=+det.delivery_fee||0;
+      if(det.payments&&det.payments[0]){
+        var pt=det.payments[0].payment_type;
+        var pm=det.payments[0].payment_method;
+        if(pt==='offline'){pgto=pm==='credit_card'||pm==='debit_card'?'card':pm==='pix'||pm==='PIX'?'pix':'money';}
+        else{pgto='online';}
+        if(det.payments[0].change_for>0) troco=parseFloat(det.payments[0].change_for);
+      }
+    }
     var obj={
       id:'CW'+c.id,idNum:c.display_id||c.id,hora:hora,horaEntrega:null,
       status:c.status,isCancelled:isCancelled,fonte:'cw',
-      dFee:+c.delivery_fee||0,pgto:pgto,
-      cFee:0,tot:+c.total||0,
+      dFee:dFee,pgto:pgto,cFee:0,tot:tot,
       courier:isTakeout?'Retirada':'iFood Entrega',
       client:(c.customer&&c.customer.name)||'—',
       item:'',canal:canal,cwId:c.id,orderType:c.order_type,
       deliveredBy:c.delivered_by||null,
-      descIfood:0,descLoja:0,comissao:0,taxaPgto:0,repasse:null,troco:0
+      descIfood:0,descLoja:0,comissao:0,taxaPgto:0,repasse:null,troco:troco
     };
-    aplicarDetalhesCW(obj, c);
+    if(det) aplicarDetalhesCW(obj, det);
     novos.push(obj);
   });
 
@@ -663,7 +670,10 @@ function aplicarDetalhes(p,det){
 }
 
 function buscarDetalhes(cwArr){
-  var ids=cwArr.filter(function(p){return p.id&&!cwDetalhes[p.id];}).map(function(p){return p.id;});
+  // buscar detalhes para todos: pedidos cruzados com Foody E pedidos CW exclusivos (retirada/ifood)
+  var ids=cwArr.filter(function(p){
+    return p.id && !cwDetalhes[p.id];
+  }).map(function(p){return p.id;});
   if(!ids.length)return;
   var total=ids.length,buscados=0;
   document.getElementById('ifood-bar').classList.remove('hid');
@@ -675,8 +685,29 @@ function buscarDetalhes(cwArr){
       return fetch('/api/cardapio/detalhes?ids='+id).then(function(r){return r.json();}).then(function(res){
         if(res.ok&&res.pedidos&&res.pedidos[0]){
           var det=res.pedidos[0];cwDetalhes[id]=det;
-          PD.forEach(function(p){if(p.cwId==id)aplicarDetalhes(p,det);});
-          CS.forEach(function(p){if(p.cwId==id)aplicarDetalhes(p,det);});
+          PD.forEach(function(p){
+            if(p.cwId==id){
+              // pedidos Foody usam aplicarDetalhes, pedidos CW usam aplicarDetalhesCW
+              if(p.fonte==='cw'){
+                // atualizar tot, pgto, troco do pedido CW
+                p.tot=+det.total||0;
+                p.dFee=+det.delivery_fee||0;
+                if(det.payments&&det.payments[0]){
+                  var pt=det.payments[0].payment_type,pm=det.payments[0].payment_method;
+                  p.pgto=pt==='offline'?(pm==='credit_card'||pm==='debit_card'?'card':pm==='pix'?'pix':'money'):'online';
+                  if(det.payments[0].change_for>0) p.troco=parseFloat(det.payments[0].change_for);
+                }
+                aplicarDetalhesCW(p,det);
+              } else {
+                aplicarDetalhes(p,det);
+              }
+            }
+          });
+          // rebuild CS with updated data
+          var confMap={};CS.forEach(function(p){if(p.conf)confMap[p.id]=true;});
+          CS=PD.filter(function(p){return p.pgto!=='online'&&!p.isCancelled;}).map(function(p){
+            return Object.assign({},p,{conf:!!confMap[p.id]||(p.pgto==='pix'),pgtoE:null});
+          });
         }
         buscados++;
         document.getElementById('det-prog').textContent=buscados+'/'+total;
