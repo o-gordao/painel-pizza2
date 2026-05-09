@@ -503,9 +503,12 @@ function voltarHoje(){document.getElementById('filtro-data').value=hojeStr();mud
 
 function extrairTroco(notes){
   if(!notes)return 0;
-  var m=notes.match(/para R\\$\s*([\d.,]+)/);
-  if(!m)return 0;
-  return parseFloat(m[1].replace(',','.')) || 0;
+  // "Troco de R$ 45,00 (para R$ 100,00)" -> extrai 100.00
+  var idx=notes.indexOf('para R$');
+  if(idx===-1)return 0;
+  var sub=notes.substring(idx+7).trim();
+  var num=sub.replace(',','.').match(/[\d.]+/);
+  return num?parseFloat(num[0]):0;
 }
 
 function pgtoFromCW(payments){
@@ -621,7 +624,7 @@ function aplicarDetalhesCW(p,det){
   }
   if(!p.isCancelled&&p.pgto==='money'){
     (det.payments||[]).forEach(function(pg){
-      if(pg.change_for&&pg.change_for>0)p.troco=Math.max(0,parseFloat(pg.change_for)-p.tot);
+      if(pg.change_for&&pg.change_for>0)p.troco=parseFloat(pg.change_for);
     });
   }
 }
@@ -656,9 +659,12 @@ function buscarDetalhes(cwArr){
               aplicarDetalhesCW(p,det);
             }
           });
+          // preservar conf antes de rebuild
           var confMap={};CS.forEach(function(p){if(p.conf)confMap[p.id]=true;});
           CS=PD.filter(function(p){return p.pgto!=='online'&&!p.isCancelled;}).map(function(p){
-            return Object.assign({},p,{conf:!!confMap[p.id]||(p.pgto==='pix'),pgtoE:null});
+            var pgtoE=null;
+            CS.forEach(function(old){if(old.cwId&&old.cwId===p.cwId)pgtoE=old.pgtoE;});
+            return Object.assign({},p,{conf:!!confMap[p.id]||(p.pgto==='pix'),pgtoE:pgtoE});
           });
         }
         buscados++;
