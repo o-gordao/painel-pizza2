@@ -861,11 +861,14 @@ function carregarHistorico(){
   fetch('/api/historico').then(function(r){return r.json();}).then(function(res){
     if(!res.ok||!res.dias.length){document.getElementById('hist-tbody').innerHTML='<tr><td colspan="8" style="text-align:center;color:var(--muted);padding:20px">'+(res.dbOk===false?'Banco não disponível':'Nenhum dia encontrado')+'</td></tr>';return;}
     document.getElementById('hist-tbody').innerHTML=res.dias.map(function(d){
-      var dt=new Date(d.data+'T12:00:00'),dataFmt=d.data.split('-').reverse().join('/');
+      // normaliza data — pode vir como "2026-05-09" ou "2026-05-09T00:00:00.000Z"
+      var dataStr=String(d.data).slice(0,10);
+      var dt=new Date(dataStr+'T12:00:00');
+      var dataFmt=dataStr.split('-').reverse().join('/');
       var salvoEm=new Date(d.salvo_em).toLocaleTimeString('pt-BR',{hour:'2-digit',minute:'2-digit'});
       return '<tr><td class="mn" style="font-weight:600">'+dataFmt+'</td><td style="color:var(--muted)">'+DIAS_SEM[dt.getDay()]+'</td><td id="hp-'+d.data+'">—</td><td id="hf-'+d.data+'">—</td><td id="ht-'+d.data+'">—</td><td id="hr-'+d.data+'">—</td><td style="color:var(--muted);font-size:11px">'+salvoEm+'</td><td><button class="btn" onclick="abrirHistDia(\''+d.data+'\')">ver detalhes</button></td></tr>';
     }).join('');
-    res.dias.forEach(function(d){carregarResumoHist(d.data);});
+    res.dias.forEach(function(d){carregarResumoHist(String(d.data).slice(0,10));});
   }).catch(function(e){document.getElementById('hist-tbody').innerHTML='<tr><td colspan="8" style="text-align:center;color:#ff6b4a;padding:20px">Erro: '+e.message+'</td></tr>';});
 }
 function carregarResumoHist(data){
