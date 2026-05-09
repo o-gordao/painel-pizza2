@@ -552,6 +552,14 @@ function aplicarDetalhes(p, det){
   // repasse = base - comissao - taxaPgto (descLoja já está no total, só é informativo)
   p.repasse = p.isCancelled ? null : (isIfoodCh ? baseComissao-comissao-taxaPgto : null);
   if(!p.isCancelled && det.updated_at) p.horaEntrega=det.updated_at.substring(11,16);
+  // troco do cliente (change_for - total)
+  if(!p.isCancelled && p.pgto==='money') {
+    (det.payments||[]).forEach(function(pg){
+      if(pg.change_for && pg.change_for > 0) {
+        p.troco = Math.max(0, parseFloat(pg.change_for) - p.tot);
+      }
+    });
+  }
 }
 
 // ── buscar detalhes CW em background ─────────────────────────
