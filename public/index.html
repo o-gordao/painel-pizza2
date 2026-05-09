@@ -6,6 +6,7 @@
 <title>Fechamento — Disck Pizza Hollywood</title>
 <link href="https://fonts.googleapis.com/css2?family=DM+Mono:wght@400;500&family=DM+Sans:wght@400;500;600&display=swap" rel="stylesheet">
 <script src="https://cdnjs.cloudflare.com/ajax/libs/Chart.js/4.4.1/chart.umd.js"></script>
+<script type="module" id="fb-module"></script>
 
 <style>
 :root{--bg:#0f0f0f;--bg2:#181818;--bg3:#222;--border:#2a2a2a;--border2:#333;--text:#f0f0f0;--muted:#888;--accent:#e8452c;--green:#2ecc71;--yellow:#f1c40f;--blue:#3498db;--purple:#9b59b6;--sidebar-w:220px}
@@ -343,28 +344,33 @@ hr.d{border:none;border-top:1px solid var(--border);margin:5px 0}
 
   <!-- ROTAS -->
   <div id="panel-rotas" class="panel">
+    <!-- Criar rota -->
     <div class="sc">
-      <div class="sc-title">números dos pedidos</div>
-      <input type="text" id="rotas-numeros" class="rota-input" placeholder="Ex: 44, 45, 46" style="margin-bottom:8px">
-      <button class="btn btn-a" id="btn-criar-rota" onclick="criarRota()" style="width:100%;padding:10px;font-size:13px">🛵 Enviar para Expedição</button>
+      <div class="sc-title" style="text-transform:uppercase;letter-spacing:.5px;font-size:11px">números dos pedidos</div>
+      <input type="text" id="rotas-numeros" class="rota-input" placeholder="Ex: 44, 45, 46" style="margin-bottom:8px" onkeydown="if(event.key==='Enter')fbCriarRota()" oninput="fbValidarNums()">
+      <div id="rotas-warn" style="font-size:12px;color:#ff6b4a;min-height:16px;margin-bottom:6px"></div>
+      <button class="btn btn-a" id="btn-criar-rota" onclick="fbCriarRota()" style="width:100%;padding:10px;font-size:13px">🛵 Enviar para Expedição</button>
       <div id="rotas-feedback" style="font-size:12px;min-height:18px;margin-top:6px"></div>
     </div>
+    <!-- Aguardando liberação -->
     <div class="sc">
       <div style="display:flex;align-items:center;gap:8px;margin-bottom:12px">
-        <div class="sc-title" style="margin-bottom:0">aguardando liberação</div>
+        <div class="sc-title" style="margin-bottom:0;text-transform:uppercase;letter-spacing:.5px;font-size:11px">aguardando liberação</div>
         <span id="aguard-badge"></span>
       </div>
       <div id="rotas-aguardando"><div style="text-align:center;color:var(--muted);padding:12px">Nenhuma aguardando</div></div>
     </div>
+    <!-- Rotas ativas -->
     <div class="sc">
       <div style="display:flex;align-items:center;gap:8px;margin-bottom:12px">
-        <div class="sc-title" style="margin-bottom:0">rotas ativas</div>
+        <div class="sc-title" style="margin-bottom:0;text-transform:uppercase;letter-spacing:.5px;font-size:11px">rotas ativas</div>
         <span id="rotas-count" style="font-size:11px;color:var(--muted)"></span>
       </div>
       <div id="rotas-ativas"><div style="text-align:center;color:var(--muted);padding:20px">Conectando ao Firebase...</div></div>
     </div>
+    <!-- Histórico -->
     <div class="sc">
-      <div class="sc-title">histórico</div>
+      <div class="sc-title" style="text-transform:uppercase;letter-spacing:.5px;font-size:11px;margin-bottom:12px">histórico</div>
       <div id="rotas-historico"><div style="text-align:center;color:var(--muted);padding:12px">—</div></div>
     </div>
   </div>
@@ -972,159 +978,213 @@ function abrirHistDia(data){
   }).catch(function(e){document.getElementById('hist-otb').innerHTML='<tr><td colspan="12" style="text-align:center;color:#ff6b4a">Erro: '+e.message+'</td></tr>';});
 }
 
-// ── ROTAS (REST API sem SDK) ──────────────────────────────────
-var FB='https://pizzaria-rotas-default-rtdb.firebaseio.com';
-var aguardandoAnterior=0,rotasTimer=null;
-function horaAtualBrasil(){var d=new Date();d.setHours(d.getHours()-3);return d.toTimeString().slice(0,5);}
-function fbGet(p){return fetch(FB+p+'.json').then(function(r){return r.json();});}
-function fbPut(p,d){return fetch(FB+p+'.json',{method:'PUT',body:JSON.stringify(d)}).then(function(r){return r.json();});}
-function fbPost(p,d){return fetch(FB+p+'.json',{method:'POST',body:JSON.stringify(d)}).then(function(r){return r.json();});}
-function fbDel(p){return fetch(FB+p+'.json',{method:'DELETE'});}
-function getNums(){return(document.getElementById('rotas-numeros').value||'').split(',').map(function(s){return s.trim();}).filter(Boolean);}
+// ── ROTAS (Firebase SDK tempo real) ──────────────────────────
+var FB_URL='https://pizzaria-rotas-default-rtdb.firebaseio.com';
+var _rotasLocal={},_aguardandoLocal={},_historicoLocal={};
+var _editandoId=null,_fbEscutando=false,_aguardAnterior=0,_rotasTimer=null;
 
-function atualizarPedidosDisponiveis(){
-  var div=document.getElementById('rotas-pedidos-disponiveis');if(!div)return;
-  var ok=['open','accepted','ready','dispatched'];
-  var lista=PD.filter(function(p){return ok.indexOf(p.status)!==-1;});
-  if(!lista.length){div.innerHTML='<span style="font-size:12px;color:var(--muted)">nenhum pedido disponível</span>';return;}
-  var sel=getNums();
-  div.innerHTML=lista.map(function(p){
-    var s=sel.indexOf(p.id)!==-1;
-    return '<button onclick="togglePedidoRota(\''+p.id+'\')" style="padding:5px 12px;border-radius:6px;border:1px solid '+(s?'var(--green)':'var(--border2)')+';background:'+(s?'rgba(46,204,113,.15)':'var(--bg3)')+';color:'+(s?'var(--green)':'var(--text)')+';cursor:pointer;font-size:12px;font-family:\'DM Mono\',monospace">#'+p.id+' · '+p.courier.split(' ')[0]+'</button>';
-  }).join('');
+function fbTs(){var d=new Date();d.setHours(d.getHours()-3);return d.toTimeString().slice(0,5);}
+
+function fbEsc(s){return String(s).replace(/&/g,'&amp;').replace(/</g,'&lt;').replace(/>/g,'&gt;');}
+
+function fbParseNums(val){
+  return (val||'').split(/[,\s]+/).map(function(x){return x.trim();}).filter(function(x){return x.length>0&&/^\d+$/.test(x);});
 }
-function togglePedidoRota(id){
-  var nums=getNums(),idx=nums.indexOf(id);
-  if(idx===-1)nums.push(id);else nums.splice(idx,1);
-  document.getElementById('rotas-numeros').value=nums.join(', ');
-  atualizarPedidosDisponiveis();validarDuplicatasInput();
-}
-function validarDuplicatasInput(){
-  var nums=getNums();if(!nums.length){document.getElementById('rotas-feedback').innerHTML='';return;}
-  var numsExp=nums.map(function(n){return String(n).slice(-2);});
-  fbGet('/rotas').then(function(rotas){
-    rotas=rotas||{};var erros=[];
-    numsExp.forEach(function(n,i){Object.values(rotas).forEach(function(r){if((r.numeros||[]).indexOf(n)!==-1)erros.push('#'+nums[i]+' já em '+r.label);});});
-    document.getElementById('rotas-feedback').innerHTML=erros.length?'<span style="color:#ff6b4a">⚠ '+erros.join(' · ')+'</span>':'';
+
+function fbTodosNumerosAtivos(excludeId){
+  var todos=[];
+  Object.entries(_rotasLocal).forEach(function(e){
+    if(e[0]!==excludeId)(e[1].numeros||[]).forEach(function(n){todos.push({num:n,id:e[0],label:e[1].label});});
   });
+  return todos;
 }
-function criarRota(){
-  var nums=getNums();
-  if(!nums.length){document.getElementById('rotas-feedback').innerHTML='<span style="color:#ff6b4a">⚠ Selecione ao menos um pedido</span>';return;}
-  var btn=document.getElementById('btn-criar-rota');btn.disabled=true;btn.textContent='enviando...';
-  var numsExp=nums.map(function(n){return String(n).slice(-2);});
-  fbGet('/rotas').then(function(rotas){
-    rotas=rotas||{};var erros=[];
-    numsExp.forEach(function(n,i){Object.values(rotas).forEach(function(r){if((r.numeros||[]).indexOf(n)!==-1)erros.push('#'+nums[i]+' já em '+r.label);});});
-    if(erros.length){document.getElementById('rotas-feedback').innerHTML='<span style="color:#ff6b4a">⚠ '+erros.join(' · ')+'</span>';btn.disabled=false;btn.textContent='🛵 enviar para expedição';return;}
-    fbGet('/contador').then(function(c){
-      var novo=(c||0)+1;
-      fbPut('/contador',novo).then(function(){
-        fbPost('/rotas',{label:'Rota '+novo,numeros:numsExp,hora:horaAtualBrasil(),status:'pendente',alterada:false,foiAlterada:false,horaAlteracao:null}).then(function(){
-          document.getElementById('rotas-feedback').innerHTML='<span style="color:var(--green)">✅ Rota '+novo+' enviada!</span>';
-          document.getElementById('rotas-numeros').value='';atualizarPedidosDisponiveis();carregarRotas();
-          btn.disabled=false;btn.textContent='🛵 enviar para expedição';
-        });
-      });
-    });
-  }).catch(function(e){document.getElementById('rotas-feedback').innerHTML='<span style="color:#ff6b4a">⚠ '+e.message+'</span>';btn.disabled=false;btn.textContent='🛵 enviar para expedição';});
+
+function fbValidarNums(excludeId){
+  var val=document.getElementById('rotas-numeros')?document.getElementById('rotas-numeros').value:'';
+  var nums=fbParseNums(val);
+  var ativos=fbTodosNumerosAtivos(excludeId||null);
+  var conflitos=nums.filter(function(n){return ativos.some(function(a){return a.num===n;});});
+  var warn=document.getElementById('rotas-warn');
+  var btn=document.getElementById('btn-criar-rota');
+  if(conflitos.length>0){
+    var detalhe=conflitos.map(function(n){
+      var a=ativos.find(function(a){return a.num===n;});
+      return 'Pedido '+n+' já está na '+fbEsc(a.label);
+    }).join(' · ');
+    if(warn)warn.textContent='⚠ '+detalhe;
+    if(btn)btn.disabled=true;
+    return false;
+  }
+  if(warn)warn.textContent='';
+  if(btn)btn.disabled=false;
+  return true;
 }
-function toggleEditRota(btn){
-  var card=btn.closest('.rota-card');
-  var area=card.querySelector('.edit-area');
-  var showing=area.style.display==='block';
-  area.style.display=showing?'none':'block';
-  btn.textContent=showing?'✏ Editar rota':'✕ Fechar';
+
+// Polling Firebase via REST (sem SDK, compatível com o atual)
+function fbListen(path, cb){
+  function poll(){
+    fetch(FB_URL+path+'.json').then(function(r){return r.json();}).then(function(d){
+      cb(d||{});
+    }).catch(function(){});
+    _rotasTimer=setTimeout(poll,5000);
+  }
+  poll();
 }
-function salvarEdicaoSimples(btn){
-  var card=btn.closest('.rota-card');
-  var key=card.dataset.key;
-  var input=card.querySelector('.rota-edit-input');
-  var novos=(input.value||'').split(',').map(function(s){return s.trim();}).filter(Boolean);
-  if(!novos.length)return;
-  var numsExp=novos.map(function(n){return String(n).slice(-2);});
-  btn.disabled=true;btn.textContent='salvando...';
-  fbPut('/rotas/'+key+'/numeros',numsExp).then(function(){
-    fbPut('/rotas/'+key+'/alterada',true);
-    fbPut('/rotas/'+key+'/foiAlterada',true);
-    fbPut('/rotas/'+key+'/horaAlteracao',horaAtualBrasil());
-    carregarRotas();
-  });
+
+function fbSet(path,data){return fetch(FB_URL+path+'.json',{method:'PUT',body:JSON.stringify(data)}).then(function(r){return r.json();});}
+function fbPush(path,data){return fetch(FB_URL+path+'.json',{method:'POST',body:JSON.stringify(data)}).then(function(r){return r.json();});}
+function fbUpdate(path,data){return fetch(FB_URL+path+'.json',{method:'PATCH',body:JSON.stringify(data)}).then(function(r){return r.json();});}
+function fbRemove(path){return fetch(FB_URL+path+'.json',{method:'DELETE'});}
+function fbRead(path){return fetch(FB_URL+path+'.json').then(function(r){return r.json();});}
+
+function fbIniciarEscuta(){
+  if(_rotasTimer)clearTimeout(_rotasTimer);
+  function poll(){
+    Promise.all([
+      fbRead('/rotas'),fbRead('/aguardando'),fbRead('/historico')
+    ]).then(function(res){
+      _rotasLocal=res[0]||{};
+      var aguardando=res[1]||{};
+      _historicoLocal=res[2]||{};
+      // notificar nova rota aguardando
+      var novoCount=Object.keys(aguardando).length;
+      if(novoCount>_aguardAnterior&&document.getElementById('panel-rotas').classList.contains('on')){
+        mostrarToast('🔔 Nova rota aguardando liberação!','yellow');
+      }
+      _aguardAnterior=novoCount;
+      _aguardandoLocal=aguardando;
+      fbRenderAll();
+    }).catch(function(){});
+    if(document.getElementById('panel-rotas').classList.contains('on')){
+      _rotasTimer=setTimeout(poll,5000);
+    }
+  }
+  poll();
 }
-function confirmarSaida(btn){
-  var card=btn.closest('.aguard-card');
-  var key=card.dataset.key;
-  btn.disabled=true;btn.textContent='confirmando...';
-  fbGet('/aguardando/'+key).then(function(dados){
-    if(!dados)return;
-    fbDel('/aguardando/'+key).then(function(){
-      fbPost('/historico',{
-        label:dados.label,numeros:dados.numeros,hora:dados.hora,
-        horaSaiu:dados.horaSaiu||horaAtualBrasil(),
-        horaLiberado:horaAtualBrasil(),foiAlterada:dados.foiAlterada||false
-      });
-      carregarRotas();
-    });
-  });
+
+function fbRenderAll(){
+  fbRenderRotas();
+  fbRenderAguardando();
+  fbRenderHistorico();
 }
-function liberarRota(key,dados){
-  fbDel('/aguardando/'+key).then(function(){
-    fbPost('/historico',{label:dados.label,numeros:dados.numeros,hora:dados.hora,horaSaiu:dados.horaSaiu,horaLiberado:horaAtualBrasil(),foiAlterada:dados.foiAlterada||false});
-    carregarRotas();
-  });
-}
-function carregarRotas(){
-  clearTimeout(rotasTimer);
-  Promise.all([fbGet('/rotas'),fbGet('/aguardando'),fbGet('/historico')]).then(function(res){
-    renderRotasAtivas(res[0]||{});renderAguardando(res[1]||{});renderHistoricoRotas(res[2]||{});
-  }).catch(function(e){document.getElementById('rotas-ativas').innerHTML='<div style="color:#ff6b4a;padding:12px">Erro Firebase: '+e.message+'</div>';});
-  rotasTimer=setTimeout(function(){if(document.getElementById('panel-rotas').classList.contains('on'))carregarRotas();},10000);
-}
-function renderRotasAtivas(rotas){
-  var div=document.getElementById('rotas-ativas'),entries=Object.entries(rotas);
-  document.getElementById('rotas-count').textContent=entries.length?'('+entries.length+')':'';
+
+function fbRenderRotas(){
+  var div=document.getElementById('rotas-ativas');
+  var entries=Object.entries(_rotasLocal);
+  var count=document.getElementById('rotas-count');
+  if(count)count.textContent=entries.length?'('+entries.length+')':'';
   if(!entries.length){div.innerHTML='<div style="text-align:center;color:var(--muted);padding:16px">Nenhuma rota ativa</div>';return;}
   div.innerHTML=entries.map(function(e){
-    var key=e[0],r=e[1],nj=JSON.stringify(r.numeros||[]);
-    return '<div class="rota-card'+(r.alterada?' alterada':'')+'">'
-      +'<div style="display:flex;align-items:center;justify-content:space-between;margin-bottom:8px"><div class="rota-label">'+r.label+'</div>'
-      +(r.alterada?'<span style="font-size:11px;background:rgba(230,126,34,.15);color:#e67e22;padding:2px 8px;border-radius:20px">⚠ Alterada</span>':'')+'</div>'
-      +'<div class="rota-nums">'+(r.numeros||[]).map(function(n){return '<span class="rota-num">'+n+'</span>';}).join('')+'</div>'
-      +'<div class="rota-hora" style="margin-bottom:10px">Enviada às '+r.hora+(r.horaAlteracao?' · Editada às '+r.horaAlteracao:'')+'</div>'
-      +'<button class="btn" style="width:100%;margin-bottom:6px" onclick="editarRota(\''+key+'\',\''+r.label+'\','+nj+')">✏ Editar rota</button>'
-      +'<div id="edit-'+key+'" style="display:none;margin-top:8px"><input id="edit-input-'+key+'" class="rota-edit-input" placeholder="Números por vírgula">'
-      +'<div style="display:flex;gap:6px"><button class="btn btn-a" style="flex:1" onclick="salvarEdicao(\''+key+'\')">✓ Salvar</button>'
-      +'<button class="btn" onclick="editarRota(\''+key+'\',\'\',\'\')">Cancelar</button></div></div></div>';
+    var id=e[0],r=e[1];
+    var editando=_editandoId===id;
+    var pills=(r.numeros||[]).map(function(n){return '<span class="rota-num">'+fbEsc(n)+'</span>';}).join('');
+    var meta='Enviada às '+r.hora+(r.horaAlteracao?' · Editada às '+r.horaAlteracao:'');
+    var badge=r.alterada?'<span style="font-size:11px;background:rgba(230,126,34,.15);color:#e67e22;padding:2px 8px;border-radius:20px">⚠ Alterada</span>':'';
+    var acoes=editando
+      ?'<div style="margin-top:8px"><input id="edit-inp-'+id+'" class="rota-edit-input" value="'+(r.numeros||[]).join(', ')+'" placeholder="Números por vírgula ou espaço"><div id="edit-warn-'+id+'" style="font-size:12px;color:#ff6b4a;min-height:14px;margin:4px 0"></div><div style="display:flex;gap:6px;margin-top:6px"><button class="btn btn-a" style="flex:1" onclick="fbSalvarEdicao(''+id+'')">✓ Salvar</button><button class="btn" onclick="fbCancelarEdicao()">Cancelar</button></div></div>'
+      :'<button class="btn" style="width:100%;margin-top:8px" onclick="fbIniciarEdicao(''+id+'')">✏ Editar rota</button>';
+    return '<div class="rota-card'+(r.alterada?' alt':'')+'">'      +'<div style="display:flex;justify-content:space-between;align-items:center;margin-bottom:6px">'      +'<div class="rota-label">'+fbEsc(r.label)+'</div>'+badge+'</div>'      +'<div class="rota-nums" style="margin-bottom:6px">'+pills+'</div>'      +'<div class="rota-hora">'+meta+'</div>'+acoes+'</div>';
   }).join('');
 }
-function renderAguardando(aguard){
-  var div=document.getElementById('rotas-aguardando'),entries=Object.entries(aguard);
+
+function fbRenderAguardando(){
+  var div=document.getElementById('rotas-aguardando');
   var badge=document.getElementById('aguard-badge');
-  if(entries.length>aguardandoAnterior&&document.getElementById('panel-rotas').classList.contains('on'))mostrarToast('🔔 Nova rota aguardando liberação!','yellow');
-  aguardandoAnterior=entries.length;
-  badge.innerHTML=entries.length?'<span class="notif-badge">'+entries.length+'</span>':'';
-  var nb2=document.getElementById('notif-rotas');if(nb2){nb2.textContent=entries.length||'';nb2.classList.toggle('show',entries.length>0);}
+  var entries=Object.entries(_aguardandoLocal);
+  var nb=document.getElementById('notif-rotas');
+  if(badge)badge.innerHTML=entries.length?'<span class="notif-badge">'+entries.length+'</span>':'';
+  if(nb){nb.textContent=entries.length||'';nb.classList.toggle('show',entries.length>0);}
   if(!entries.length){div.innerHTML='<div style="text-align:center;color:var(--muted);padding:12px">Nenhuma aguardando</div>';return;}
   div.innerHTML=entries.map(function(e){
-    var key=e[0],r=e[1],enc=encodeURIComponent(JSON.stringify(r));
-    return '<div class="aguard-card"><div class="rota-label">'+r.label+'</div>'
-      +'<div class="rota-nums">'+(r.numeros||[]).map(function(n){return '<span class="rota-num">'+n+'</span>';}).join('')+'</div>'
-      +'<div class="rota-hora" style="margin-bottom:10px">Enviada às '+r.hora+' · Saiu às '+(r.horaSaiu||'—')+'</div>'
-      +'<button class="btn btn-a" style="width:100%" onclick="liberarRota(\''+key+'\',JSON.parse(decodeURIComponent(\''+enc+'\')))">✓ Liberar para entrega</button></div>';
+    var id=e[0],r=e[1];
+    var pills=(r.numeros||[]).map(function(n){return '<span class="rota-num">'+fbEsc(n)+'</span>';}).join('');
+    return '<div class="aguard-card">'      +'<div style="display:flex;justify-content:space-between;align-items:center;margin-bottom:6px">'      +'<div class="rota-label">'+fbEsc(r.label)+'</div>'      +'<span style="font-size:11px;background:rgba(52,152,219,.15);color:var(--blue);padding:2px 8px;border-radius:20px">Saiu '+r.horaSaiu+'</span></div>'      +'<div class="rota-nums" style="margin-bottom:6px">'+pills+'</div>'      +'<div class="rota-hora" style="margin-bottom:10px">Enviada às '+r.hora+'</div>'      +'<button class="btn btn-a" style="width:100%" onclick="fbLiberarRota(''+id+'')">✓ Liberar para entrega</button></div>';
   }).join('');
 }
-function renderHistoricoRotas(hist){
-  var div=document.getElementById('rotas-historico'),entries=Object.entries(hist);
+
+function fbRenderHistorico(){
+  var div=document.getElementById('rotas-historico');
+  var entries=Object.entries(_historicoLocal);
   if(!entries.length){div.innerHTML='<div style="text-align:center;color:var(--muted);padding:12px">Sem rotas no histórico</div>';return;}
-  entries.sort(function(a,b){return (parseInt((b[1].label||'').replace(/[^0-9]/g,''))||0)-(parseInt((a[1].label||'').replace(/[^0-9]/g,''))||0);});
+  entries.sort(function(a,b){
+    var na=parseInt((a[1].label||'').match(/[0-9]+/)?.[0]||'0');
+    var nb=parseInt((b[1].label||'').match(/[0-9]+/)?.[0]||'0');
+    return nb-na;
+  });
   div.innerHTML=entries.slice(0,20).map(function(e){
     var r=e[1];
-    return '<div style="display:flex;align-items:center;justify-content:space-between;padding:9px 0;border-bottom:1px solid var(--border);gap:8px;flex-wrap:wrap">'
-      +'<span style="font-weight:600;min-width:70px">'+r.label+'</span>'
-      +'<div style="display:flex;gap:4px;flex-wrap:wrap">'+(r.numeros||[]).map(function(n){return '<span style="background:var(--bg3);border:1px solid var(--border);padding:2px 8px;border-radius:6px;font-family:\'DM Mono\',monospace;font-size:16px;font-weight:700">'+n+'</span>';}).join('')+'</div>'
-      +'<span style="font-size:11px;color:var(--muted)">'+r.hora+' → '+(r.horaSaiu||'—')+(r.foiAlterada?' ✏':'')+'</span></div>';
+    var pedidos='Pedidos: '+(r.numeros||[]).map(function(n){return '#'+n;}).join(', ');
+    var tempo='Enviada '+r.hora+(r.horaSaiu?' · Saiu '+r.horaSaiu:'');
+    return '<div style="border:1px solid var(--border);border-radius:8px;padding:12px;margin-bottom:8px">'      +'<div style="font-weight:600;margin-bottom:4px">'+fbEsc(r.label)+'</div>'      +'<div style="font-size:12px;color:var(--muted);margin-bottom:2px">'+pedidos+'</div>'      +'<div style="font-size:11px;color:var(--muted)">'+tempo+(r.foiAlterada?' · ✏ Editada':'')+'</div></div>';
   }).join('');
 }
+
+window.fbCriarRota=function(){
+  if(!fbValidarNums())return;
+  var val=document.getElementById('rotas-numeros').value;
+  var nums=fbParseNums(val);
+  if(!nums.length)return;
+  var btn=document.getElementById('btn-criar-rota');
+  btn.disabled=true;btn.textContent='enviando...';
+  fbRead('/contador').then(function(c){
+    var novo=(c||0)+1;
+    return fbSet('/contador',novo).then(function(){return novo;});
+  }).then(function(novo){
+    return fbPush('/rotas',{
+      label:'Rota '+novo,numeros:nums,hora:fbTs(),
+      status:'pendente',alterada:false,foiAlterada:false,horaAlteracao:null
+    }).then(function(){return novo;});
+  }).then(function(novo){
+    document.getElementById('rotas-numeros').value='';
+    document.getElementById('rotas-warn').textContent='';
+    var fb=document.getElementById('rotas-feedback');
+    fb.innerHTML='<span style="color:var(--green)">✅ Rota '+novo+' enviada para a Expedição</span>';
+    setTimeout(function(){fb.innerHTML='';},4000);
+    btn.disabled=false;btn.textContent='🛵 Enviar para Expedição';
+  }).catch(function(e){
+    document.getElementById('rotas-feedback').innerHTML='<span style="color:#ff6b4a">⚠ '+e.message+'</span>';
+    btn.disabled=false;btn.textContent='🛵 Enviar para Expedição';
+  });
+};
+
+window.fbIniciarEdicao=function(id){_editandoId=id;fbRenderRotas();};
+window.fbCancelarEdicao=function(){_editandoId=null;fbRenderRotas();};
+
+window.fbSalvarEdicao=function(id){
+  var inp=document.getElementById('edit-inp-'+id);
+  if(!inp)return;
+  var nums=fbParseNums(inp.value);
+  if(!nums.length)return;
+  var ativos=fbTodosNumerosAtivos(id);
+  var conflitos=nums.filter(function(n){return ativos.some(function(a){return a.num===n;});});
+  var ewarn=document.getElementById('edit-warn-'+id);
+  if(conflitos.length>0){
+    if(ewarn)ewarn.textContent='⚠ '+conflitos.join(', ')+' já em outra rota';
+    return;
+  }
+  inp.disabled=true;
+  fbUpdate('/rotas/'+id,{numeros:nums,alterada:true,foiAlterada:true,horaAlteracao:fbTs()}).then(function(){
+    _editandoId=null;
+    fbIniciarEscuta();
+  });
+};
+
+window.fbLiberarRota=function(id){
+  var btn=event.target;
+  btn.disabled=true;btn.textContent='liberando...';
+  fbRead('/aguardando/'+id).then(function(r){
+    if(!r)return;
+    return fbPush('/historico',{
+      label:r.label,numeros:r.numeros||[],hora:r.hora,
+      horaSaiu:r.horaSaiu||fbTs(),horaLiberado:fbTs(),foiAlterada:r.foiAlterada||false
+    }).then(function(){return fbRemove('/aguardando/'+id);});
+  }).then(function(){
+    fbIniciarEscuta();
+  }).catch(function(e){
+    btn.disabled=false;btn.textContent='✓ Liberar para entrega';
+  });
+};
+
 function T(id,el){
   document.querySelectorAll('.panel').forEach(function(p){p.classList.remove('on');});
   document.querySelectorAll('.tab').forEach(function(b){b.classList.remove('on');});
@@ -1132,7 +1192,7 @@ function T(id,el){
   el.classList.add('on');
 }
 var _T=T;
-T=function(id,el){_T(id,el);if(id==='rotas'){atualizarPedidosDisponiveis();carregarRotas();}};
+T=function(id,el){_T(id,el);if(id==='rotas'){fbIniciarEscuta();}};
 // ── FIM ROTAS ─────────────────────────────────────────────────
 
 function toggleTema(){
