@@ -501,145 +501,62 @@ function mudarData(data){
 }
 function voltarHoje(){document.getElementById('filtro-data').value=hojeStr();mudarData(hojeStr());}
 
-function extrairTroco(notes){
-  // "Troco de R$ 45,00 (para R$ 100,00)" → 100.00
-  if(!notes) return 0;
-  var m=notes.match(/para R\$\s*([\d.,]+)/);
-  if(!m) return 0;
-  return parseFloat(m[1].replace(',','.')) || 0;
-}
-
-function statusCW(s){
-  var m={confirmed:'Em preparo',ready:'Pronto',takeout:'Ag. retirada',closed:'Finalizado',canceled:'Cancelado',cancelled:'Cancelado'};
-  return m[s]||s;
-}
-
 function processar(foodyArr,cwArr,data){
   var novos=[];
-  var cwMap={};  // cwId → cwOrder (para cruzamento)
-  cwArr.forEach(function(c){ cwMap[c.id]=c; });
-
-  // mapa de cwId já usados no cruzamento com Foody
-  var cwUsados={};
-
-  // 1. Pedidos da Foody (entrega própria)
+  var cwMatchados=[];
   foodyArr.forEach(function(p){
     var dt=p.date||p.creationDate||'';
     var hora=dt.length>=16?dt.substring(11,16):'';
-    var canal='catalog',cwId=null,cwOrder=null;
+    var canal='catalog',cwId=null;
     for(var i=0;i<cwArr.length;i++){
-      try{
-        var diff=Math.abs(new Date(cwArr[i].created_at)-new Date(dt))/1000;
-        if(diff<90){
-          canal=cwArr[i].sales_channel||'catalog';
-          cwId=cwArr[i].id;
-          cwOrder=cwArr[i];
-          cwUsados[cwId]=true;
-          break;
-        }
-      }catch(e){}
+      try{var diff=Math.abs(new Date(cwArr[i].created_at)-new Date(dt))/1000;if(diff<90){canal=cwArr[i].sales_channel||'ifood';cwId=cwArr[i].id;cwMatchados.push(cwArr[i].id);break;}}catch(e){}
     }
     var isCancelled=['cancelled','canceled'].indexOf(p.status)!==-1;
-    var troco=extrairTroco(p.notes||'');
-    var obj={
+    novos.push({
       id:String(p.id),idNum:parseInt(p.id)||0,hora:hora,horaEntrega:null,
-      status:p.status,isCancelled:isCancelled,fonte:'foody',
+      status:p.status,isCancelled:isCancelled,
       dFee:+p.deliveryFee||0,pgto:PGTO_MAP[p.paymentMethod]||'online',
       cFee:+p.courierFee||0,tot:+p.orderTotal||0,
       courier:(p.courier&&p.courier.courierName)||'Desconhecido',
       client:(p.customer&&p.customer.customerName)||'—',
       item:p.orderDetails?p.orderDetails.split('\n')[0]:'—',
-      canal:canal,cwId:cwId,orderType:'delivery',
-      deliveredBy:'foody_delivery',
-      descIfood:0,descLoja:0,comissao:0,taxaPgto:0,repasse:null,troco:troco
-    };
-    // aplicar detalhes do CW direto se disponível
-    if(cwOrder) aplicarDetalhesCW(obj, cwOrder);
-    novos.push(obj);
+      canal:canal,cwId:cwId,
+      deliveredBy:canal!=='ifood'?'foody_delivery':null,
+      descIfood:0,descLoja:0,comissao:0,taxaPgto:0,repasse:null,troco:0
+    });
   });
-
-  // 2. Pedidos do CW que NÃO cruzaram com Foody (retirada e entrega iFood)
-  cwArr.forEach(function(c){
-    if(cwUsados[c.id]) return; // já processado
-    var isIfoodDel = c.delivered_by==='ifood';
-    var isTakeout  = c.order_type==='takeout';
-    if(!isIfoodDel && !isTakeout) return; // ignora outros
-    var hora=c.created_at?c.created_at.substring(11,16):'';
-    var isCancelled=['cancelled','canceled'].indexOf(c.status)!==-1;
-    var canal=c.sales_channel||'catalog';
-    // /orders retorna só resumo — tot e pgto vêm dos detalhes
-    // usamos cwDetalhes se já tiver, senão deixa zerado até buscar
-    var det=cwDetalhes[c.id]||null;
-    var pgto='online',tot=0,dFee=0,troco=0;
-    if(det){
-      tot=+det.total||0;
-      dFee=+det.delivery_fee||0;
-      if(det.payments&&det.payments[0]){
-        var pt=det.payments[0].payment_type;
-        var pm=det.payments[0].payment_method;
-        if(pt==='offline'){pgto=pm==='credit_card'||pm==='debit_card'?'card':pm==='pix'||pm==='PIX'?'pix':'money';}
-        else{pgto='online';}
-        if(det.payments[0].change_for>0) troco=parseFloat(det.payments[0].change_for);
-      }
-    }
-    var obj={
-      id:'CW'+c.id,idNum:c.display_id||c.id,hora:hora,horaEntrega:null,
-      status:c.status,isCancelled:isCancelled,fonte:'cw',
-      dFee:dFee,pgto:pgto,cFee:0,tot:tot,
-      courier:isTakeout?'Retirada':'iFood Entrega',
-      client:(c.customer&&c.customer.name)||'—',
-      item:'',canal:canal,cwId:c.id,orderType:c.order_type,
-      deliveredBy:c.delivered_by||null,
-      descIfood:0,descLoja:0,comissao:0,taxaPgto:0,repasse:null,troco:troco
-    };
-    if(det) aplicarDetalhesCW(obj, det);
-    novos.push(obj);
+  // Pedidos CW exclusivos (retirada / iFood sem motoboy próprio)
+  cwArr.forEach(function(cw){
+    if(cwMatchados.indexOf(cw.id)!==-1)return;
+    var isCancelled=['cancelled','canceled'].indexOf(cw.status)!==-1;
+    var isTakeout=cw.order_type==='takeout';
+    var courier=isTakeout?'Retirada':(cw.delivered_by==='ifood'?'iFood':'Desconhecido');
+    novos.push({
+      id:String(cw.display_id||cw.id),idNum:cw.display_id||0,
+      hora:(cw.created_at||'').substring(11,16),horaEntrega:null,
+      status:cw.status,isCancelled:isCancelled,
+      dFee:+cw.delivery_fee||0,pgto:'online',
+      cFee:0,tot:+cw.total||0,
+      courier:courier,
+      client:(cw.customer&&cw.customer.name)||'—',
+      canal:cw.sales_channel||'catalog',
+      cwId:cw.id,
+      deliveredBy:cw.delivered_by||null,
+      descIfood:0,descLoja:0,comissao:0,taxaPgto:0,repasse:null,troco:0
+    });
   });
-
   novos.sort(function(a,b){return a.idNum-b.idNum;});
-
-  // preservar troco e conf anteriores
-  var confMap={},trocoMap={};
-  CS.forEach(function(p){if(p.conf)confMap[p.id]=true;if(p.troco>0)trocoMap[p.id]=p.troco;});
-  novos.forEach(function(p){if(trocoMap[p.id])p.troco=trocoMap[p.id];});
-
+  novos.forEach(function(p){
+    CS.forEach(function(old){if(old.id===p.id&&old.troco>0)p.troco=old.troco;});
+    if(p.cwId&&cwDetalhes[p.cwId])aplicarDetalhes(p,cwDetalhes[p.cwId]);
+  });
   PD=novos;
+  var confMap={};
+  CS.forEach(function(p){if(p.conf)confMap[p.id]=true;});
   CS=PD.filter(function(p){return p.pgto!=='online'&&!p.isCancelled;}).map(function(p){
     return Object.assign({},p,{conf:!!confMap[p.id]||(p.pgto==='pix'),pgtoE:null});
   });
   render();
-}
-
-function aplicarDetalhesCW(p, det){
-  if(!det) return;
-  var descIfood=0,descLoja=0;
-  var isIfoodCh=p.canal==='ifood';
-  var isTakeout=p.orderType==='takeout';
-  if(!p.isCancelled){
-    (det.discounts||[]).forEach(function(d){
-      if(d.sponsorship==='ifood') descIfood+=d.total||0;
-      else if(d.sponsorship==='merchant') descLoja+=d.total||0;
-    });
-  }
-  var isEntregaIfood=det.delivered_by==='ifood';
-  var isPgtoOnline=(det.payments||[]).some(function(pg){return pg.payment_type==='online';});
-  var baseComissao=p.tot+descIfood;
-  var comissao=0;
-  if(isIfoodCh&&!p.isCancelled&&!isTakeout){
-    comissao=baseComissao*(isEntregaIfood?COMISSAO_IFOOD:COMISSAO_PROPRIA);
-  }
-  var taxaPgto=(isIfoodCh&&!p.isCancelled&&!isTakeout&&isPgtoOnline)?baseComissao*TAXA_PGTO_ONLINE:0;
-  p.deliveredBy=p.isCancelled?null:(det.delivered_by||p.deliveredBy||'foody_delivery');
-  p.descIfood=descIfood;p.descLoja=descLoja;
-  p.comissao=comissao;p.taxaPgto=taxaPgto;
-  p.repasse=(!p.isCancelled&&isIfoodCh&&!isTakeout)?baseComissao-comissao-taxaPgto:null;
-  if(!p.isCancelled&&det.updated_at)p.horaEntrega=det.updated_at.substring(11,16);
-  // troco via CW payments: change_for = valor que cliente paga
-  if(!p.isCancelled&&p.pgto==='money'){
-    (det.payments||[]).forEach(function(pg){
-      if(pg.change_for&&pg.change_for>0) p.troco=parseFloat(pg.change_for);
-    });
-  }
 }
 
 function aplicarDetalhes(p,det){
@@ -670,10 +587,7 @@ function aplicarDetalhes(p,det){
 }
 
 function buscarDetalhes(cwArr){
-  // buscar detalhes para todos: pedidos cruzados com Foody E pedidos CW exclusivos (retirada/ifood)
-  var ids=cwArr.filter(function(p){
-    return p.id && !cwDetalhes[p.id];
-  }).map(function(p){return p.id;});
+  var ids=cwArr.filter(function(p){return p.id&&!cwDetalhes[p.id];}).map(function(p){return p.id;});
   if(!ids.length)return;
   var total=ids.length,buscados=0;
   document.getElementById('ifood-bar').classList.remove('hid');
@@ -685,29 +599,8 @@ function buscarDetalhes(cwArr){
       return fetch('/api/cardapio/detalhes?ids='+id).then(function(r){return r.json();}).then(function(res){
         if(res.ok&&res.pedidos&&res.pedidos[0]){
           var det=res.pedidos[0];cwDetalhes[id]=det;
-          PD.forEach(function(p){
-            if(p.cwId==id){
-              // pedidos Foody usam aplicarDetalhes, pedidos CW usam aplicarDetalhesCW
-              if(p.fonte==='cw'){
-                // atualizar tot, pgto, troco do pedido CW
-                p.tot=+det.total||0;
-                p.dFee=+det.delivery_fee||0;
-                if(det.payments&&det.payments[0]){
-                  var pt=det.payments[0].payment_type,pm=det.payments[0].payment_method;
-                  p.pgto=pt==='offline'?(pm==='credit_card'||pm==='debit_card'?'card':pm==='pix'?'pix':'money'):'online';
-                  if(det.payments[0].change_for>0) p.troco=parseFloat(det.payments[0].change_for);
-                }
-                aplicarDetalhesCW(p,det);
-              } else {
-                aplicarDetalhes(p,det);
-              }
-            }
-          });
-          // rebuild CS with updated data
-          var confMap={};CS.forEach(function(p){if(p.conf)confMap[p.id]=true;});
-          CS=PD.filter(function(p){return p.pgto!=='online'&&!p.isCancelled;}).map(function(p){
-            return Object.assign({},p,{conf:!!confMap[p.id]||(p.pgto==='pix'),pgtoE:null});
-          });
+          PD.forEach(function(p){if(p.cwId==id)aplicarDetalhes(p,det);});
+          CS.forEach(function(p){if(p.cwId==id)aplicarDetalhes(p,det);});
         }
         buscados++;
         document.getElementById('det-prog').textContent=buscados+'/'+total;
@@ -833,8 +726,8 @@ function buildC(){
     var pg=p.pgtoE||p.pgto,hide=CF.length>0&&CF.indexOf(pg)===-1;
     var hora=p.horaEntrega||p.hora||'—';
     var trocoHtml='';
-    if(pg==='money'&&p.troco>0){
-      trocoHtml='<br><span style="font-size:10px;color:var(--muted)">troco: </span><span style="font-family:monospace;color:var(--yellow);font-size:12px;font-weight:600">'+R(p.troco)+'</span>';
+    if(pg==='money'){
+      trocoHtml='<br><span style="font-size:10px;color:var(--muted)">troco: </span><input type="number" step="0.01" min="0" value="'+(p.troco||0)+'" style="width:65px;background:var(--bg3);border:1px solid var(--border2);color:var(--yellow);padding:2px 5px;border-radius:4px;font-size:11px" onchange="setTroco('+i+',this.value)" onclick="event.stopPropagation()">';
     }
     return '<tr id="cr'+i+'" class="'+(p.conf?'okr':'')+(hide?' hid':'')+'"><td class="mn" style="font-weight:600">#'+p.id+'</td><td class="mn" style="font-size:11px;color:var(--muted)">'+hora+'</td><td style="font-size:12px">'+p.courier+'</td><td><div style="display:flex;align-items:center;gap:5px"><span class="ppill '+PPC(pg)+'" id="pp'+i+'">'+PL(pg)+'</span><button class="ep" onclick="eP('+i+')">✏</button></div></td><td class="mn" style="font-weight:600">'+R(p.tot)+trocoHtml+'</td><td>'+stPill(p.status)+'</td><td style="text-align:center"><input type="checkbox" class="chk" '+(p.conf?'checked':'')+' onchange="tC('+i+',this)"></td></tr>';
   }).join('');
@@ -857,9 +750,7 @@ function filtC(t,btn){
 function upC(){
   var vis=CS.filter(function(p,i){var pg=CS[i].pgtoE||CS[i].pgto;return CF.length===0||CF.indexOf(pg)!==-1;});
   var ok=vis.filter(function(p){return p.conf;}),pend=vis.filter(function(p){return !p.conf;});
-  // total usa troco quando tem (valor que o entregador precisa ter)
-  var valEnt=function(p){return p.troco>0?p.troco:p.tot;};
-  var tv=vis.reduce(function(a,p){return a+valEnt(p);},0),ov=ok.reduce(function(a,p){return a+valEnt(p);},0),pv=pend.reduce(function(a,p){return a+valEnt(p);},0);
+  var tv=vis.reduce(function(a,p){return a+p.tot;},0),ov=ok.reduce(function(a,p){return a+p.tot;},0),pv=pend.reduce(function(a,p){return a+p.tot;},0);
   document.getElementById('cst2').textContent=vis.length;
   document.getElementById('cok').textContent=ok.length;
   document.getElementById('cpd').textContent=pend.length;
@@ -878,8 +769,7 @@ function openM(){
     var trocoL=p.pgto==='money'&&p.troco>0?'<div class="pi-line"><span class="pi-lbl">Troco:</span><span class="pi-val" style="color:var(--yellow)">'+R(p.troco)+'</span></div>':'';
     return '<div class="pi"><div class="pi-line"><span class="pi-lbl">Pedido:</span><span class="pi-val">#'+p.id+'</span></div><div class="pi-line"><span class="pi-lbl">Entregador:</span><span class="pi-val">'+p.courier+'</span></div><div class="pi-line"><span class="pi-lbl">Pagamento:</span><span class="pi-val">'+PL(p.pgtoE||p.pgto)+'</span></div><div class="pi-line"><span class="pi-lbl">Valor:</span><span class="pi-val red">'+R(p.tot)+'</span></div>'+trocoL+'</div>';
   }).join('');
-  var valEnt2=function(p){return p.troco>0?p.troco:p.tot;};
-  var perC={};pend.forEach(function(p){var c=p.courier;if(!perC[c])perC[c]={n:0,v:0};perC[c].n++;perC[c].v+=valEnt2(p);});
+  var perC={};pend.forEach(function(p){var c=p.courier;if(!perC[c])perC[c]={n:0,v:0};perC[c].n++;perC[c].v+=p.tot;});
   document.getElementById('mcouriers').innerHTML=Object.entries(perC).map(function(x){return '<div class="ctotal"><span style="font-weight:500">'+x[0]+'</span><span style="font-family:\'DM Mono\',monospace;color:#ff6b4a">'+R(x[1].v)+' ('+x[1].n+' ped.)</span></div>';}).join('');
   document.getElementById('mpend').classList.remove('hid');
 }
@@ -896,8 +786,7 @@ function copyM(){
   });
   txt+='─────────────────────\nTOTAL POR ENTREGADOR\n\n';
   Object.entries(perC).forEach(function(x){txt+=x[0]+': '+R(x[1].v)+' ('+x[1].n+' pedido'+(x[1].n>1?'s':'')+')\n';});
-  var tvTroco=pend.reduce(function(a,p){return a+(p.troco>0?p.troco:p.tot);},0);
-  txt+='\nTotal geral pendente: '+R(tvTroco);
+  txt+='\nTotal geral pendente: '+R(tv);
   navigator.clipboard.writeText(txt).then(function(){var b=document.querySelector('.mf .btn-a');b.textContent='✓ copiado!';setTimeout(function(){b.textContent='copiar relatório';},2000);});
 }
 
