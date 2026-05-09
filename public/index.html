@@ -957,10 +957,9 @@ T=function(id,el){_T(id,el);if(id==='rotas'){atualizarPedidosDisponiveis();carre
 function toggleTema(){
   var isLight=document.body.classList.toggle('light');
   document.getElementById('btn-tema').textContent=isLight?'☀️':'🌙';
-  localStorage.setItem('tema',isLight?'light':'dark');
+  try{localStorage.setItem('tema',isLight?'light':'dark');}catch(e){}
 }
-// restaurar tema salvo
-if(localStorage.getItem('tema')==='light'){document.body.classList.add('light');document.getElementById('btn-tema').textContent='☀️';}
+try{if(localStorage.getItem('tema')==='light'){document.body.classList.add('light');document.getElementById('btn-tema').textContent='☀️';}}catch(e){}
 
 document.getElementById('filtro-data').value=hojeStr();
 carregar();
