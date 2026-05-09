@@ -6,7 +6,6 @@
 <title>Fechamento — Disck Pizza Hollywood</title>
 <link href="https://fonts.googleapis.com/css2?family=DM+Mono:wght@400;500&family=DM+Sans:wght@400;500;600&display=swap" rel="stylesheet">
 <script src="https://cdnjs.cloudflare.com/ajax/libs/Chart.js/4.4.1/chart.umd.js"></script>
-<script type="module" id="fb-module"></script>
 
 <style>
 :root{--bg:#0f0f0f;--bg2:#181818;--bg3:#222;--border:#2a2a2a;--border2:#333;--text:#f0f0f0;--muted:#888;--accent:#e8452c;--green:#2ecc71;--yellow:#f1c40f;--blue:#3498db;--purple:#9b59b6;--sidebar-w:220px}
@@ -1107,8 +1106,8 @@ function fbRenderHistorico(){
   var entries=Object.entries(_historicoLocal);
   if(!entries.length){div.innerHTML='<div style="text-align:center;color:var(--muted);padding:12px">Sem rotas no histórico</div>';return;}
   entries.sort(function(a,b){
-    var na=parseInt((a[1].label||'').match(/[0-9]+/)?.[0]||'0');
-    var nb=parseInt((b[1].label||'').match(/[0-9]+/)?.[0]||'0');
+    var ma=(a[1].label||'').match(/[0-9]+/);var na=parseInt(ma?ma[0]:'0');
+    var mb=(b[1].label||'').match(/[0-9]+/);var nb=parseInt(mb?mb[0]:'0');
     return nb-na;
   });
   div.innerHTML=entries.slice(0,20).map(function(e){
